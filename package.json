@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed:supabase": "tsx scripts/seed-supabase.ts"
+    "seed:supabase": "node --env-file=.env ./node_modules/tsx/dist/cli.mjs scripts/seed-supabase.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
