@@ -98,7 +98,7 @@ const adminStorageKey = "recogitaly-admin-unlocked";
 
 export function TripApp() {
   const [data, setData] = useState<AppData>(fallbackData);
-  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus>("not-configured");
+  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus>("checking");
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedMemberId, setSelectedMemberId] = useState("");
   const [adminUnlocked, setAdminUnlocked] = useState(false);
@@ -341,6 +341,15 @@ function LogoTitle() {
 }
 
 function SupabaseBanner({ status, errorMessage }: { status: SupabaseStatus; errorMessage: string }) {
+  if (status === "checking") {
+    return (
+      <div className="sync-banner">
+        <RefreshCw size={16} aria-hidden />
+        Supabase 연결 확인 중
+      </div>
+    );
+  }
+
   if (status === "connected") {
     return (
       <div className="sync-banner connected">

@@ -175,4 +175,4 @@ export type AppData = {
   settlementConfirmations: SettlementConfirmation[];
 };
 
-export type SupabaseStatus = "not-configured" | "connected" | "error";
+export type SupabaseStatus = "checking" | "not-configured" | "connected" | "error";
