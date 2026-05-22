@@ -247,6 +247,22 @@ export async function addExpense(input: {
   if (error) throw error;
 }
 
+export async function deleteExpense(expenseId: string, memberId: string) {
+  await postJson("/api/expenses/delete", { expenseId, memberId }, "비용 삭제에 실패했어요.");
+}
+
+export async function deleteCandidate(placeId: string, memberId: string) {
+  await postJson("/api/places/delete", { placeId, memberId }, "장소 삭제에 실패했어요.");
+}
+
+export async function deleteMapLink(linkId: string, memberId: string) {
+  await postJson("/api/map-links/delete", { linkId, memberId }, "지도 링크 삭제에 실패했어요.");
+}
+
+export async function reorderMapLinks(dayId: string, orderedIds: string[], memberId: string) {
+  await postJson("/api/map-links/reorder", { dayId, orderedIds, memberId }, "지도 링크 순서 변경에 실패했어요.");
+}
+
 export async function confirmSettlement(roundId: string, memberId: string) {
   const supabase = requireSupabase();
   const { error } = await supabase
@@ -259,6 +275,19 @@ export async function confirmSettlement(roundId: string, memberId: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ roundId })
   });
+}
+
+async function postJson(url: string, body: unknown, fallbackMessage: string) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const responseBody = await response.json().catch(() => null);
+    throw new Error(responseBody?.message ?? fallbackMessage);
+  }
 }
 
 export async function verifyAdminCode(code: string) {

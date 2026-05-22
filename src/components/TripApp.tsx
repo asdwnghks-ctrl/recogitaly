@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  ArrowDown,
+  ArrowUp,
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
@@ -15,19 +17,24 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  Trash2,
   UserRound,
   WalletCards
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   addCandidate,
   addComment,
   addExpense,
   confirmSettlement,
+  deleteCandidate,
+  deleteExpense,
+  deleteMapLink,
   decidePlace,
   fallbackData,
   loadAppData,
   markVisited,
+  reorderMapLinks,
   toggleRecommendation,
   verifyAdminCode
 } from "@/lib/appStore";
@@ -46,7 +53,18 @@ import type {
   TripDay
 } from "@/lib/types";
 
+declare global {
+  interface Window {
+    google?: any;
+    initRecogitalyGoogleMaps?: () => void;
+    recogitalyGoogleMapsPromise?: Promise<void>;
+  }
+}
+
 type TabId = "home" | "schedule" | "accounting" | "more";
+type CandidateInputMode = "link" | "map";
+
+const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Home }> = [
   { id: "home", label: "홈", icon: Home },
@@ -564,7 +582,27 @@ function ScheduleView({
 }) {
   const [anchor, setAnchor] = useState<{ afterItemId: string | null; beforeItemId: string | null } | null>(null);
   const items = data.itineraryItems.filter((item) => item.dayId === selectedDay.id);
-  const links = data.mapLinks.filter((link) => link.dayId === selectedDay.id);
+  const links = data.mapLinks
+    .filter((link) => link.dayId === selectedDay.id)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const moveMapLink = (linkId: string, direction: -1 | 1) => {
+    const currentIndex = links.findIndex((link) => link.id === linkId);
+    const nextIndex = currentIndex + direction;
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= links.length) return;
+
+    const orderedLinks = [...links];
+    [orderedLinks[currentIndex], orderedLinks[nextIndex]] = [orderedLinks[nextIndex], orderedLinks[currentIndex]];
+    runAction(
+      () => reorderMapLinks(selectedDay.id, orderedLinks.map((link) => link.id), currentMember.id),
+      "주소 순서를 바꿨어요."
+    );
+  };
+
+  const removeMapLink = (linkId: string) => {
+    if (!window.confirm("이 지도 링크를 삭제할까요?")) return;
+    runAction(() => deleteMapLink(linkId, currentMember.id), "지도 링크를 삭제했어요.");
+  };
 
   return (
     <div className="stack schedule-view">
@@ -648,15 +686,42 @@ function ScheduleView({
           <h3>오늘 지도 링크</h3>
           <span className="count-pill">{links.length}</span>
         </div>
-        <div className="map-link-grid">
-          {links.map((link) => (
-            <a key={link.id} href={link.mapUrl} target="_blank" rel="noreferrer">
-              <MapPin size={16} aria-hidden />
-              <span>{link.placeName}</span>
-              <ExternalLink size={14} aria-hidden />
-            </a>
-          ))}
-        </div>
+        {links.length ? (
+          <div className="map-link-list">
+            {links.map((link, index) => (
+              <div key={link.id} className="map-link-row">
+                <a className="map-link-card" href={link.mapUrl} target="_blank" rel="noreferrer">
+                  <MapPin size={16} aria-hidden />
+                  <span>{link.placeName}</span>
+                  <ExternalLink size={14} aria-hidden />
+                </a>
+                <div className="map-link-controls">
+                  <button
+                    type="button"
+                    disabled={busy || index === 0}
+                    onClick={() => moveMapLink(link.id, -1)}
+                    aria-label={`${link.placeName} 위로 이동`}
+                  >
+                    <ArrowUp size={15} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || index === links.length - 1}
+                    onClick={() => moveMapLink(link.id, 1)}
+                    aria-label={`${link.placeName} 아래로 이동`}
+                  >
+                    <ArrowDown size={15} aria-hidden />
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => removeMapLink(link.id)} aria-label={`${link.placeName} 삭제`}>
+                    <Trash2 size={15} aria-hidden />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState text="오늘 저장된 지도 링크가 없어요." />
+        )}
       </section>
     </div>
   );
@@ -679,11 +744,82 @@ function CandidateForm({
   onCancel: () => void;
   onSubmit: (input: Parameters<typeof addCandidate>[0]) => void;
 }) {
+  const [inputMode, setInputMode] = useState<CandidateInputMode>("link");
   const [name, setName] = useState("");
   const [city, setCity] = useState(day.city.split("/")[0]);
   const [category, setCategory] = useState<PlaceCategory>("food");
   const [mapUrl, setMapUrl] = useState("");
   const [reason, setReason] = useState("");
+  const [lookupStatus, setLookupStatus] = useState("");
+  const nameTouchedRef = useRef(false);
+
+  useEffect(() => {
+    setCity(day.city.split("/")[0]);
+  }, [day.id, day.city]);
+
+  useEffect(() => {
+    if (inputMode !== "link") {
+      return;
+    }
+
+    if (!mapUrl.trim()) {
+      setLookupStatus("");
+      return;
+    }
+
+    if (!isGoogleMapsUrl(mapUrl)) {
+      setLookupStatus("구글 지도 링크를 넣어주세요.");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLookupStatus("지도 제목을 불러오는 중...");
+
+      try {
+        const response = await fetch("/api/maps/metadata", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: mapUrl }),
+          signal: controller.signal
+        });
+        const body = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          setLookupStatus(body?.message ?? "지도 제목을 불러오지 못했어요.");
+          return;
+        }
+
+        if (body?.name && !nameTouchedRef.current) {
+          setName(body.name);
+        }
+        if (body?.url && body.url !== mapUrl) {
+          setMapUrl(body.url);
+        }
+        setLookupStatus(body?.name ? "지도 제목을 불러왔어요." : "장소명을 직접 적어주세요.");
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setLookupStatus("장소명을 직접 적어주세요.");
+        }
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [inputMode, mapUrl]);
+
+  const applySelectedPlace = useCallback(
+    (place: { name: string; city: string; mapUrl: string }) => {
+      nameTouchedRef.current = false;
+      setName(place.name);
+      setCity(place.city || city);
+      setMapUrl(place.mapUrl);
+      setLookupStatus("지도에서 선택했어요.");
+    },
+    [city]
+  );
 
   return (
     <form
@@ -691,11 +827,11 @@ function CandidateForm({
       onSubmit={(event) => {
         event.preventDefault();
         onSubmit({
-          name,
-          city,
+          name: name.trim(),
+          city: city.trim(),
           category,
-          mapUrl,
-          reason,
+          mapUrl: mapUrl.trim(),
+          reason: reason.trim(),
           memberId: currentMember.id,
           dayId: day.id,
           afterItemId,
@@ -703,20 +839,48 @@ function CandidateForm({
         });
       }}
     >
+      <div className="segmented input-mode-segmented">
+        <button type="button" className={inputMode === "link" ? "selected" : ""} onClick={() => setInputMode("link")}>
+          링크로 추가
+        </button>
+        <button type="button" className={inputMode === "map" ? "selected" : ""} onClick={() => setInputMode("map")}>
+          지도에서 검색
+        </button>
+      </div>
+      {inputMode === "map" && (
+        <PlaceSearchBox apiKey={googleMapsApiKey} fallbackCity={city} onSelect={applySelectedPlace} />
+      )}
+      <label className="field">
+        <span>구글 지도 링크</span>
+        <input
+          value={mapUrl}
+          onChange={(event) => {
+            nameTouchedRef.current = false;
+            setMapUrl(event.target.value);
+          }}
+          required
+          placeholder="https://maps.app.goo.gl/..."
+        />
+        {lookupStatus && <small className="field-hint">{lookupStatus}</small>}
+      </label>
       <div className="form-grid">
         <label className="field">
           <span>장소명</span>
-          <input value={name} onChange={(event) => setName(event.target.value)} required placeholder="구글 지도 장소명" />
+          <input
+            value={name}
+            onChange={(event) => {
+              nameTouchedRef.current = true;
+              setName(event.target.value);
+            }}
+            required
+            placeholder="구글 지도 장소명"
+          />
         </label>
         <label className="field">
           <span>도시</span>
           <input value={city} onChange={(event) => setCity(event.target.value)} required />
         </label>
       </div>
-      <label className="field">
-        <span>구글 지도 링크</span>
-        <input value={mapUrl} onChange={(event) => setMapUrl(event.target.value)} required placeholder="https://maps.app.goo.gl/..." />
-      </label>
       <div className="segmented category-segmented">
         {categoryOptions.map((option) => (
           <button
@@ -737,12 +901,95 @@ function CandidateForm({
         <button type="button" className="ghost-button" onClick={onCancel}>
           취소
         </button>
-        <button type="submit" className="primary-button" disabled={busy || !name || !mapUrl}>
+        <button type="submit" className="primary-button" disabled={busy || !name.trim() || !mapUrl.trim()}>
           <Send size={16} aria-hidden />
           올리기
         </button>
       </div>
     </form>
+  );
+}
+
+function PlaceSearchBox({
+  apiKey,
+  fallbackCity,
+  onSelect
+}: {
+  apiKey: string;
+  fallbackCity: string;
+  onSelect: (place: { name: string; city: string; mapUrl: string }) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const onSelectRef = useRef(onSelect);
+  const [status, setStatus] = useState(apiKey ? "지도 준비 중..." : "지도 검색은 API 키가 필요해요.");
+
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    if (!apiKey) return;
+
+    let cancelled = false;
+    let listener: { remove: () => void } | null = null;
+
+    loadGoogleMapsApi(apiKey)
+      .then(() => {
+        if (cancelled || !window.google || !inputRef.current || !mapRef.current) return;
+
+        const map = new window.google.maps.Map(mapRef.current, {
+          center: { lat: 42.5, lng: 12.5 },
+          zoom: 5,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false
+        });
+        const marker = new window.google.maps.Marker({ map });
+        const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
+          fields: ["address_components", "formatted_address", "geometry", "name", "place_id", "url"]
+        });
+
+        autocomplete.bindTo("bounds", map);
+        listener = autocomplete.addListener("place_changed", () => {
+          const place = autocomplete.getPlace();
+          if (!place?.geometry?.location) {
+            setStatus("검색 목록에서 장소를 선택해주세요.");
+            return;
+          }
+
+          map.setCenter(place.geometry.location);
+          map.setZoom(15);
+          marker.setPosition(place.geometry.location);
+          marker.setVisible(true);
+
+          const name = place.name?.trim() || inputRef.current?.value.trim() || "";
+          onSelectRef.current({
+            name,
+            city: extractPlaceCity(place.address_components, fallbackCity),
+            mapUrl: place.url || buildGoogleMapsPlaceUrl(name, place.formatted_address, place.place_id)
+          });
+        });
+
+        setStatus("지도에서 장소를 검색해 선택하세요.");
+      })
+      .catch(() => setStatus("지도 검색을 불러오지 못했어요."));
+
+    return () => {
+      cancelled = true;
+      listener?.remove();
+    };
+  }, [apiKey, fallbackCity]);
+
+  return (
+    <div className="map-picker">
+      <label className="field">
+        <span>지도 검색</span>
+        <input ref={inputRef} className="place-search-input" placeholder="식당, 카페, 장소 검색" disabled={!apiKey} />
+        <small className="field-hint">{status}</small>
+      </label>
+      <div ref={mapRef} className="embedded-map" aria-label="구글 지도 검색" />
+    </div>
   );
 }
 
@@ -767,6 +1014,7 @@ function CandidateCard({
   const comments = data.comments.filter((placeComment) => placeComment.placeId === candidate.id);
   const recommended = recs.some((recommendation) => recommendation.memberId === currentMember.id);
   const suggestedBy = memberById(data.members, candidate.suggestedByMemberId);
+  const canDeleteCandidate = canUseAdmin || candidate.suggestedByMemberId === currentMember.id;
 
   return (
     <article className={`candidate-card ${candidate.status}`}>
@@ -807,6 +1055,20 @@ function CandidateCard({
           <MessageCircle size={16} aria-hidden />
           {comments.length}
         </span>
+        {canDeleteCandidate && (
+          <button
+            type="button"
+            className="icon-action danger"
+            disabled={busy}
+            onClick={() => {
+              if (!window.confirm("이 장소 후보를 삭제할까요?")) return;
+              runAction(() => deleteCandidate(candidate.id, currentMember.id), "장소 후보를 삭제했어요.");
+            }}
+            aria-label={`${candidate.name} 삭제`}
+          >
+            <Trash2 size={16} aria-hidden />
+          </button>
+        )}
       </div>
 
       <div className="comment-list">
@@ -998,7 +1260,10 @@ function AccountingView({
               <div key={row.memberId} className="settlement-row">
                 <span className="member-dot" style={{ backgroundColor: member?.color }} />
                 <strong>{member?.name}</strong>
-                <span>{formatKrw(row.balanceKrw)}</span>
+                <span className="money-pair align-right">
+                  <b>{formatKrw(row.balanceKrw)}</b>
+                  <small>{formatEur(row.balanceEur)}</small>
+                </span>
               </div>
             );
           })}
@@ -1010,7 +1275,10 @@ function AccountingView({
                 <span>{memberById(data.members, transfer.fromMemberId)?.name}</span>
                 <strong>→</strong>
                 <span>{memberById(data.members, transfer.toMemberId)?.name}</span>
-                <b>{formatKrw(transfer.amountKrw)}</b>
+                <span className="money-pair align-right">
+                  <b>{formatKrw(transfer.amountKrw)}</b>
+                  <small>{formatEur(transfer.amountEur)}</small>
+                </span>
               </div>
             ))
           ) : (
@@ -1040,7 +1308,21 @@ function AccountingView({
                 <strong>{expense.title}</strong>
                 <span>{memberById(data.members, expense.paidByMemberId)?.name} · {expense.type === "shared" ? "공동" : "개인"}</span>
               </div>
-              <b>{expense.currency === "EUR" ? formatEur(expense.amount) : formatKrw(expense.amount)}</b>
+              <span className="expense-amount">{expense.currency === "EUR" ? formatEur(expense.amount) : formatKrw(expense.amount)}</span>
+              {(expense.paidByMemberId === currentMember.id || currentMember.role === "admin") && (
+                <button
+                  type="button"
+                  className="icon-action danger"
+                  disabled={busy}
+                  onClick={() => {
+                    if (!window.confirm("이 비용을 삭제할까요?")) return;
+                    runAction(() => deleteExpense(expense.id, currentMember.id), "비용을 삭제했어요.");
+                  }}
+                  aria-label={`${expense.title} 삭제`}
+                >
+                  <Trash2 size={16} aria-hidden />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -1179,6 +1461,58 @@ function MetricCard({ label, value, sub }: { label: string; value: string; sub: 
 
 function EmptyState({ text }: { text: string }) {
   return <div className="empty-state">{text}</div>;
+}
+
+function isGoogleMapsUrl(value: string) {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase();
+    return hostname.includes("google.") || hostname === "maps.app.goo.gl" || hostname === "goo.gl";
+  } catch {
+    return false;
+  }
+}
+
+function loadGoogleMapsApi(apiKey: string) {
+  if (window.google?.maps?.places) {
+    return Promise.resolve();
+  }
+
+  if (window.recogitalyGoogleMapsPromise) {
+    return window.recogitalyGoogleMapsPromise;
+  }
+
+  window.recogitalyGoogleMapsPromise = new Promise<void>((resolve, reject) => {
+    window.initRecogitalyGoogleMaps = () => resolve();
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&callback=initRecogitalyGoogleMaps`;
+    script.async = true;
+    script.defer = true;
+    script.dataset.recogitalyGoogleMaps = "true";
+    script.onerror = () => {
+      window.recogitalyGoogleMapsPromise = undefined;
+      reject(new Error("Google Maps API failed to load."));
+    };
+    document.head.appendChild(script);
+  });
+
+  return window.recogitalyGoogleMapsPromise;
+}
+
+function buildGoogleMapsPlaceUrl(name: string, address = "", placeId = "") {
+  const query = encodeURIComponent([name, address].filter(Boolean).join(" "));
+  const placeIdQuery = placeId ? `&query_place_id=${encodeURIComponent(placeId)}` : "";
+  return `https://www.google.com/maps/search/?api=1&query=${query}${placeIdQuery}`;
+}
+
+function extractPlaceCity(addressComponents: Array<{ long_name: string; types: string[] }> | undefined, fallbackCity: string) {
+  const component = addressComponents?.find((part) =>
+    part.types.some((type) =>
+      ["locality", "postal_town", "administrative_area_level_3", "administrative_area_level_2"].includes(type)
+    )
+  );
+
+  return component?.long_name ?? fallbackCity;
 }
 
 function getNearestDay(days: TripDay[]) {

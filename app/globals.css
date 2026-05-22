@@ -299,6 +299,13 @@ a {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.field-hint {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 .primary-button,
 .ghost-button {
   display: inline-flex;
@@ -326,7 +333,9 @@ a {
 .primary-button:disabled,
 .ghost-button:disabled,
 .candidate-actions button:disabled,
-.admin-actions button:disabled {
+.admin-actions button:disabled,
+.map-link-controls button:disabled,
+.icon-action:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -715,6 +724,7 @@ a {
 .candidate-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -740,6 +750,27 @@ a {
 .reaction.muted {
   border: 0;
   background: var(--soft);
+}
+
+.icon-action,
+.map-link-controls button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--white);
+}
+
+.icon-action.danger,
+.map-link-controls button:last-child {
+  color: #be123c;
+  border-color: #fecdd3;
+  background: #fff1f2;
 }
 
 .comment-list {
@@ -805,13 +836,33 @@ a {
   font-weight: 800;
 }
 
-.map-link-grid {
+.map-picker {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.embedded-map {
+  width: 100%;
+  height: 196px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef2f7;
+}
+
+.map-link-list {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.map-link-grid a {
+.map-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.map-link-card {
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr) 14px;
   align-items: center;
@@ -824,11 +875,17 @@ a {
   font-size: 13px;
 }
 
-.map-link-grid span {
+.map-link-card span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.map-link-controls {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  gap: 4px;
 }
 
 .summary-grid {
@@ -872,6 +929,7 @@ a {
 .transfer-row {
   display: grid;
   grid-template-columns: 1fr auto 1fr auto;
+  align-items: center;
 }
 
 .transfer-row b {
@@ -879,7 +937,9 @@ a {
 }
 
 .expense-row {
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  justify-content: stretch;
 }
 
 .expense-row div {
@@ -891,6 +951,29 @@ a {
 
 .expense-row strong {
   overflow-wrap: anywhere;
+}
+
+.expense-amount {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.money-pair {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  line-height: 1.15;
+}
+
+.money-pair.align-right {
+  align-items: flex-end;
+}
+
+.money-pair small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .empty-state {
@@ -989,8 +1072,12 @@ a {
   .member-grid,
   .form-grid,
   .summary-grid,
-  .map-link-grid {
+  .map-link-row {
     grid-template-columns: 1fr;
+  }
+
+  .map-link-controls {
+    justify-content: start;
   }
 
   .quick-grid {
@@ -1018,5 +1105,14 @@ a {
   .category-segmented,
   .admin-button-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .transfer-row {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+
+  .transfer-row .money-pair {
+    grid-column: 1 / -1;
+    align-items: flex-start;
   }
 }

@@ -27,3 +27,12 @@
 - [여행 계획 정리](docs/11-trip-plan.md)
 - [회계와 정산 흐름](docs/12-accounting-flow.md)
 - [브랜딩과 타이틀](docs/13-branding.md)
+
+## 주요 환경 변수
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `ADMIN_ACCESS_CODE`
+- `NEXT_PUBLIC_EXCHANGE_RATE_EUR_KRW`
+- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`: 앱 안 지도 검색에 사용
