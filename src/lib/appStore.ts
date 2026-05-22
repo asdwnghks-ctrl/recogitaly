@@ -55,7 +55,28 @@ export async function loadAppData(): Promise<LoadResult> {
       membersResult,
       daysResult,
       itemsResult,
-      mapLinksResult,
+      mapLinksResult
+    ] = await Promise.all([
+      supabase.from("trips").select("*").eq("id", trip.id).maybeSingle(),
+      supabase.from("members").select("*").order("created_at"),
+      supabase.from("trip_days").select("*").order("day_number"),
+      supabase.from("itinerary_items").select("*").order("day_id").order("sort_order"),
+      supabase.from("day_map_links").select("*").order("day_id").order("sort_order")
+    ]);
+
+    const baseError = [
+      tripResult.error,
+      membersResult.error,
+      daysResult.error,
+      itemsResult.error,
+      mapLinksResult.error
+    ].find(Boolean);
+
+    if (baseError) {
+      throw baseError;
+    }
+
+    const [
       candidatesResult,
       recommendationsResult,
       commentsResult,
@@ -64,38 +85,14 @@ export async function loadAppData(): Promise<LoadResult> {
       roundsResult,
       confirmationsResult
     ] = await Promise.all([
-      supabase.from("trips").select("*").eq("id", trip.id).maybeSingle(),
-      supabase.from("members").select("*").order("created_at"),
-      supabase.from("trip_days").select("*").order("day_number"),
-      supabase.from("itinerary_items").select("*").order("day_id").order("sort_order"),
-      supabase.from("day_map_links").select("*").order("day_id").order("sort_order"),
-      supabase.from("place_candidates").select("*").order("created_at", { ascending: false }),
-      supabase.from("place_recommendations").select("*").order("created_at"),
-      supabase.from("place_comments").select("*").order("created_at"),
-      supabase.from("visit_checks").select("*").order("visited_at", { ascending: false }),
-      supabase.from("expenses").select("*").order("created_at", { ascending: false }),
-      supabase.from("settlement_rounds").select("*").order("opened_at", { ascending: false }),
-      supabase.from("settlement_confirmations").select("*").order("confirmed_at")
+      safeQuery(supabase.from("place_candidates").select("*").order("created_at", { ascending: false })),
+      safeQuery(supabase.from("place_recommendations").select("*").order("created_at")),
+      safeQuery(supabase.from("place_comments").select("*").order("created_at")),
+      safeQuery(supabase.from("visit_checks").select("*").order("visited_at", { ascending: false })),
+      safeQuery(supabase.from("expenses").select("*").order("created_at", { ascending: false })),
+      safeQuery(supabase.from("settlement_rounds").select("*").order("opened_at", { ascending: false })),
+      safeQuery(supabase.from("settlement_confirmations").select("*").order("confirmed_at"))
     ]);
-
-    const error = [
-      tripResult.error,
-      membersResult.error,
-      daysResult.error,
-      itemsResult.error,
-      mapLinksResult.error,
-      candidatesResult.error,
-      recommendationsResult.error,
-      commentsResult.error,
-      visitsResult.error,
-      expensesResult.error,
-      roundsResult.error,
-      confirmationsResult.error
-    ].find(Boolean);
-
-    if (error) {
-      throw error;
-    }
 
     return {
       status: "connected",
@@ -126,8 +123,20 @@ export async function loadAppData(): Promise<LoadResult> {
     return {
       data: fallbackData,
       status: "error",
-      errorMessage: error instanceof Error ? error.message : "Supabase 데이터를 불러오지 못했어요."
+      errorMessage: describeError(error)
     };
+  }
+}
+
+async function safeQuery(query: PromiseLike<{ data: any[] | null; error: any }>) {
+  try {
+    const result = await query;
+    if (result.error) {
+      return { data: [], error: result.error };
+    }
+    return result;
+  } catch (error) {
+    return { data: [], error };
   }
 }
 
@@ -297,6 +306,22 @@ function requireSupabase() {
     throw new Error("Supabase 환경변수가 아직 연결되지 않았어요.");
   }
   return supabase;
+}
+
+function describeError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object") {
+    const maybeError = error as { message?: unknown; code?: unknown };
+    const code = typeof maybeError.code === "string" ? `${maybeError.code}: ` : "";
+    if (typeof maybeError.message === "string") {
+      return `${code}${maybeError.message}`;
+    }
+  }
+
+  return "Supabase 데이터를 불러오지 못했어요.";
 }
 
 function mapTrip(row: any) {
