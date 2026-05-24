@@ -68,7 +68,7 @@ const lodgingByName: Record<string, { address: string; mapUrl: string }> = {
   }
 };
 
-function lodgingDetails(name: string) {
+export function lodgingDetails(name: string) {
   const lodging = lodgingByName[name];
   return {
     lodgingAddress: lodging?.address ?? "",

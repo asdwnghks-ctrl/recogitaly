@@ -1,4 +1,4 @@
-import { itineraryItems, mapLinks, members, trip, tripDays } from "@/data/baseData";
+import { itineraryItems, lodgingDetails, mapLinks, members, trip, tripDays } from "@/data/baseData";
 import { getBrowserSupabase } from "@/lib/supabaseClient";
 import { normalizeExpenseAmount } from "@/lib/settlement";
 import type {
@@ -495,6 +495,8 @@ function mapMember(row: any) {
 }
 
 function mapDay(row: any) {
+  const fallbackLodging = lodgingDetails(row.lodging ?? "");
+
   return {
     id: row.id,
     tripId: row.trip_id,
@@ -505,8 +507,8 @@ function mapDay(row: any) {
     city: row.city,
     summary: row.summary,
     lodging: row.lodging ?? "",
-    lodgingAddress: row.lodging_address ?? "",
-    lodgingMapUrl: row.lodging_map_url ?? "",
+    lodgingAddress: row.lodging_address || fallbackLodging.lodgingAddress,
+    lodgingMapUrl: row.lodging_map_url || fallbackLodging.lodgingMapUrl,
     goal: row.goal ?? "",
     caution: row.caution ?? ""
   };
