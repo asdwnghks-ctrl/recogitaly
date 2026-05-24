@@ -658,7 +658,7 @@ a {
 .lodging-card {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
-  align-items: center;
+  align-items: start;
   gap: 10px;
   padding: 12px;
   border-style: dashed;
@@ -666,7 +666,6 @@ a {
 }
 
 .lodging-icon,
-.lodging-card a,
 .lodging-copy-button {
   display: inline-flex;
   align-items: center;
@@ -689,27 +688,45 @@ a {
   gap: 6px;
 }
 
-.lodging-card div:nth-child(2) {
+.lodging-detail {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
-.lodging-card span,
-.lodging-card small {
+.lodging-detail span {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
 }
 
-.lodging-card strong,
-.lodging-card small {
+.lodging-detail strong,
+.lodging-address {
   overflow-wrap: anywhere;
 }
 
-.lodging-card strong {
+.lodging-detail strong {
   font-size: 14px;
+  line-height: 1.35;
+}
+
+.lodging-address {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.lodging-google-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
   line-height: 1.35;
 }
 

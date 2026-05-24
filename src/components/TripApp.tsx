@@ -1653,17 +1653,21 @@ function LodgingCard({ lodging, edge }: { lodging: LodgingPoint | null; edge: "s
     return null;
   }
 
-  const heading = lodging.address || lodging.name;
-
   return (
     <article className="lodging-card">
       <div className="lodging-icon">
         <BedDouble size={18} aria-hidden />
       </div>
-      <div>
+      <div className="lodging-detail">
         <span>{edge === "start" ? "출발 숙소" : "도착 숙소"}</span>
-        <strong title={heading}>{heading}</strong>
-        {lodging.address && <small>{lodging.name}</small>}
+        <strong title={lodging.name}>{lodging.name}</strong>
+        {lodging.address && <p className="lodging-address">{lodging.address}</p>}
+        {lodging.mapUrl && (
+          <a className="lodging-google-link" href={lodging.mapUrl} target="_blank" rel="noreferrer">
+            <MapPin size={14} aria-hidden />
+            구글 지도
+          </a>
+        )}
       </div>
       <div className="lodging-actions">
         {lodging.address && (
@@ -1678,11 +1682,6 @@ function LodgingCard({ lodging, edge }: { lodging: LodgingPoint | null; edge: "s
           >
             <Copy size={17} aria-hidden />
           </button>
-        )}
-        {lodging.mapUrl && (
-          <a href={lodging.mapUrl} target="_blank" rel="noreferrer" aria-label={`${lodging.name} 지도 열기`}>
-            <MapPin size={18} aria-hidden />
-          </a>
         )}
       </div>
     </article>
