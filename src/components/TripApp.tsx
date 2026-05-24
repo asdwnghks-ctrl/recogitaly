@@ -25,7 +25,8 @@ import {
   UserRound,
   WalletCards
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
   addComment,
   addExpense,
@@ -72,6 +73,12 @@ declare global {
 type TabId = "home" | "schedule" | "accounting" | "more";
 type CandidateInputMode = "link" | "map";
 type DropPosition = "before" | "after";
+type PointerDragState = {
+  itemId: string;
+  pointerId: number;
+  targetItemId: string | null;
+  position: DropPosition | null;
+};
 
 const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
@@ -592,6 +599,8 @@ function ScheduleView({
   const [anchor, setAnchor] = useState<{ afterItemId: string | null; beforeItemId: string | null } | null>(null);
   const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
   const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<DropPosition | null>(null);
+  const pointerDragRef = useRef<PointerDragState | null>(null);
   const items = data.itineraryItems
     .filter((item) => item.dayId === selectedDay.id)
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -624,11 +633,11 @@ function ScheduleView({
     runAction(() => deleteMapLink(linkId, currentMember.id), "지도 링크를 삭제했어요.");
   };
 
-  const dropItineraryItem = (targetItemId: string, position: DropPosition) => {
-    if (!draggingItemId || draggingItemId === targetItemId) return;
+  const dropItineraryItem = (draggedItemId: string, targetItemId: string, position: DropPosition) => {
+    if (draggedItemId === targetItemId) return;
 
     const nextItems = [...items];
-    const draggingIndex = nextItems.findIndex((item) => item.id === draggingItemId);
+    const draggingIndex = nextItems.findIndex((item) => item.id === draggedItemId);
     if (draggingIndex < 0) return;
 
     const [draggingItem] = nextItems.splice(draggingIndex, 1);
@@ -640,6 +649,67 @@ function ScheduleView({
       () => reorderItineraryItems(selectedDay.id, nextItems.map((item) => item.id), currentMember.id),
       "일정 순서를 바꿨어요."
     );
+  };
+
+  const updatePointerDragTarget = (clientX: number, clientY: number, draggedItemId: string) => {
+    const element = document.elementFromPoint(clientX, clientY);
+    const segment = element?.closest<HTMLElement>("[data-itinerary-id]");
+    const targetItemId = segment?.dataset.itineraryId ?? null;
+
+    if (!segment || !targetItemId || targetItemId === draggedItemId) {
+      pointerDragRef.current = pointerDragRef.current
+        ? { ...pointerDragRef.current, targetItemId: null, position: null }
+        : null;
+      setDragOverItemId(null);
+      setDragOverPosition(null);
+      return;
+    }
+
+    const rect = segment.getBoundingClientRect();
+    const position: DropPosition = clientY > rect.top + rect.height / 2 ? "after" : "before";
+    pointerDragRef.current = pointerDragRef.current
+      ? { ...pointerDragRef.current, targetItemId, position }
+      : null;
+    setDragOverItemId(targetItemId);
+    setDragOverPosition(position);
+  };
+
+  const beginPointerDrag = (itemId: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === "mouse" || busy || items.length < 2) return;
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointerDragRef.current = { itemId, pointerId: event.pointerId, targetItemId: null, position: null };
+    setDraggingItemId(itemId);
+    setDragOverItemId(null);
+    setDragOverPosition(null);
+  };
+
+  const movePointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    updatePointerDragTarget(event.clientX, event.clientY, drag.itemId);
+  };
+
+  const finishPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    if (drag.targetItemId && drag.position) {
+      dropItineraryItem(drag.itemId, drag.targetItemId, drag.position);
+    }
+
+    pointerDragRef.current = null;
+    setDraggingItemId(null);
+    setDragOverItemId(null);
+    setDragOverPosition(null);
   };
 
   return (
@@ -676,29 +746,43 @@ function ScheduleView({
             .filter((candidate) => candidate.afterItineraryItemId === item.id)
             .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
           const isDropTarget = dragOverItemId === item.id && draggingItemId !== item.id;
+          const segmentClassName = [
+            "timeline-segment",
+            isDropTarget ? `drop-target drop-${dragOverPosition ?? "after"}` : "",
+            draggingItemId === item.id ? "dragging-source" : ""
+          ]
+            .filter(Boolean)
+            .join(" ");
 
           return (
             <div
               key={item.id}
-              className={isDropTarget ? "timeline-segment drop-target" : "timeline-segment"}
+              className={segmentClassName}
+              data-itinerary-id={item.id}
               onDragOver={(event) => {
                 event.preventDefault();
                 if (draggingItemId && draggingItemId !== item.id) {
                   setDragOverItemId(item.id);
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setDragOverPosition(event.clientY > rect.top + rect.height / 2 ? "after" : "before");
                 }
               }}
               onDragLeave={(event) => {
                 if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
                   setDragOverItemId(null);
+                  setDragOverPosition(null);
                 }
               }}
               onDrop={(event) => {
                 event.preventDefault();
                 const rect = event.currentTarget.getBoundingClientRect();
                 const position = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
-                dropItineraryItem(item.id, position);
+                if (draggingItemId) {
+                  dropItineraryItem(draggingItemId, item.id, position);
+                }
                 setDraggingItemId(null);
                 setDragOverItemId(null);
+                setDragOverPosition(null);
               }}
             >
               <TimelineItem
@@ -712,7 +796,11 @@ function ScheduleView({
                 onDragEnd={() => {
                   setDraggingItemId(null);
                   setDragOverItemId(null);
+                  setDragOverPosition(null);
                 }}
+                onPointerDragStart={(event) => beginPointerDrag(item.id, event)}
+                onPointerDragMove={movePointerDrag}
+                onPointerDragEnd={finishPointerDrag}
               />
               <div className="between-slot">
                 {betweenCandidates.map((candidate) => (
@@ -1570,7 +1658,10 @@ function TimelineItem({
   busy,
   runAction,
   onDragStart,
-  onDragEnd
+  onDragEnd,
+  onPointerDragStart,
+  onPointerDragMove,
+  onPointerDragEnd
 }: {
   item: ItineraryItem;
   photos: ItineraryItemPhoto[];
@@ -1580,6 +1671,9 @@ function TimelineItem({
   runAction: (action: () => Promise<void>, successMessage: string) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
+  onPointerDragStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPointerDragMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onPointerDragEnd: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   const isNote = item.itemType === "note";
 
@@ -1597,6 +1691,10 @@ function TimelineItem({
           onDragStart();
         }}
         onDragEnd={onDragEnd}
+        onPointerDown={onPointerDragStart}
+        onPointerMove={onPointerDragMove}
+        onPointerUp={onPointerDragEnd}
+        onPointerCancel={onPointerDragEnd}
       >
         <GripVertical size={17} aria-hidden />
       </button>

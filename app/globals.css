@@ -549,6 +549,19 @@ a {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.timeline-segment.drop-before::before,
+.timeline-segment.drop-after::after {
+  content: "";
+  display: block;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--blue);
+}
+
+.timeline-segment.dragging-source .timeline-item {
+  opacity: 0.58;
+}
+
 .timeline-item {
   display: grid;
   grid-template-columns: 34px auto minmax(0, 1fr) auto;
@@ -581,6 +594,8 @@ a {
   background: var(--soft);
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .drag-handle:active {
