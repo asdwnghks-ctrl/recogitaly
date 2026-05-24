@@ -192,7 +192,8 @@ a {
 .candidate-card,
 .metric-card,
 .next-card,
-.timeline-item {
+.timeline-item,
+.lodging-card {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--white);
@@ -543,9 +544,14 @@ a {
   gap: 8px;
 }
 
+.timeline-segment.drop-target .timeline-item {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
 .timeline-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: 34px auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: start;
   padding: 12px;
@@ -557,6 +563,28 @@ a {
 
 .timeline-item.importance-low {
   border-left: 4px solid #d1d5db;
+}
+
+.timeline-item.item-type-note {
+  border-left: 4px solid var(--amber);
+}
+
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: var(--soft);
+  cursor: grab;
+  touch-action: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
 }
 
 .time-pill {
@@ -572,6 +600,13 @@ a {
 
 .timeline-body {
   min-width: 0;
+}
+
+.timeline-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .timeline-body h3 {
@@ -595,12 +630,127 @@ a {
   line-height: 1.4;
 }
 
+.address-line {
+  display: block;
+  margin: 0 0 5px;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.lodging-card {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-style: dashed;
+  background: #f8fafc;
+}
+
+.lodging-icon,
+.lodging-card a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--blue);
+  background: var(--white);
+}
+
+.lodging-card div:nth-child(2) {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lodging-card span,
+.lodging-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.lodging-card strong,
+.lodging-card small {
+  overflow-wrap: anywhere;
+}
+
+.photo-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.photo-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.photo-thumb {
+  position: relative;
+  width: 54px;
+  margin: 0;
+}
+
+.photo-thumb img {
+  display: block;
+  width: 54px;
+  height: 54px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--soft);
+}
+
+.photo-thumb figcaption {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.photo-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--white);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.photo-upload-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .between-slot {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding-left: 16px;
   border-left: 1px dashed var(--line);
+}
+
+.empty-day-slot {
+  padding-left: 0;
+  border-left: 0;
 }
 
 .add-between-button {
@@ -654,6 +804,10 @@ a {
 }
 
 .segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: 36px;
   border: 0;
   border-radius: 6px;
@@ -877,9 +1031,24 @@ a {
 
 .map-link-card span {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   overflow: hidden;
+}
+
+.map-link-card strong,
+.map-link-card small {
+  min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
+  overflow: hidden;
+}
+
+.map-link-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .map-link-controls {
@@ -1094,12 +1263,25 @@ a {
   }
 
   .timeline-item {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 34px 1fr auto;
   }
 
   .time-pill {
-    grid-column: 1 / -1;
+    grid-column: 2 / 3;
     width: fit-content;
+  }
+
+  .drag-handle {
+    grid-row: span 2;
+  }
+
+  .timeline-body {
+    grid-column: 2 / -1;
+  }
+
+  .timeline-item > a {
+    grid-column: 3;
+    grid-row: 1;
   }
 
   .category-segmented,

@@ -7,6 +7,8 @@ import type {
   Expense,
   ExpenseCategory,
   ExpenseType,
+  ItineraryItemType,
+  ItineraryItemPhoto,
   PlaceCandidate,
   PlaceCategory,
   PlaceComment,
@@ -22,6 +24,7 @@ const emptyDynamicData = {
   recommendations: [],
   comments: [],
   visitChecks: [],
+  itineraryPhotos: [],
   expenses: [],
   settlementRounds: [],
   settlementConfirmations: []
@@ -81,6 +84,7 @@ export async function loadAppData(): Promise<LoadResult> {
       recommendationsResult,
       commentsResult,
       visitsResult,
+      itemPhotosResult,
       expensesResult,
       roundsResult,
       confirmationsResult
@@ -89,6 +93,7 @@ export async function loadAppData(): Promise<LoadResult> {
       safeQuery(supabase.from("place_recommendations").select("*").order("created_at")),
       safeQuery(supabase.from("place_comments").select("*").order("created_at")),
       safeQuery(supabase.from("visit_checks").select("*").order("visited_at", { ascending: false })),
+      safeQuery(supabase.from("itinerary_item_photos").select("*").order("created_at")),
       safeQuery(supabase.from("expenses").select("*").order("created_at", { ascending: false })),
       safeQuery(supabase.from("settlement_rounds").select("*").order("opened_at", { ascending: false })),
       safeQuery(supabase.from("settlement_confirmations").select("*").order("confirmed_at"))
@@ -106,6 +111,7 @@ export async function loadAppData(): Promise<LoadResult> {
         candidates: candidatesResult.data?.map(mapCandidate) ?? [],
         recommendations: recommendationsResult.data?.map(mapRecommendation) ?? [],
         comments: commentsResult.data?.map(mapComment) ?? [],
+        itineraryPhotos: itemPhotosResult.data?.map(mapItineraryPhoto) ?? [],
         visitChecks: visitsResult.data?.map((row) => ({
           id: row.id,
           placeId: row.place_id,
@@ -173,6 +179,73 @@ export async function addCandidate(input: {
 
   if (error) throw error;
   return mapCandidate(data);
+}
+
+export async function addItineraryItem(input: {
+  dayId: string;
+  memberId: string;
+  afterItemId: string | null;
+  itemType: ItineraryItemType;
+  timeLabel: string;
+  title: string;
+  city: string;
+  placeName: string;
+  address: string;
+  mapUrl: string;
+  description: string;
+}) {
+  await postJson("/api/itinerary/add", input, "일정 추가에 실패했어요.");
+}
+
+export async function reorderItineraryItems(dayId: string, orderedIds: string[], memberId: string) {
+  await postJson("/api/itinerary/reorder", { dayId, orderedIds, memberId }, "일정 순서 변경에 실패했어요.");
+}
+
+export async function uploadItineraryPhoto(itemId: string, memberId: string, file: File) {
+  const supabase = requireSupabase();
+  if (!file.type.startsWith("image/")) {
+    throw new Error("이미지 파일만 올릴 수 있어요.");
+  }
+
+  const existing = await supabase
+    .from("itinerary_item_photos")
+    .select("storage_path")
+    .eq("item_id", itemId)
+    .eq("member_id", memberId)
+    .maybeSingle();
+
+  if (existing.error) {
+    throw existing.error;
+  }
+
+  const extension = getImageExtension(file);
+  const storagePath = `${itemId}/${memberId}-${Date.now()}.${extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from("itinerary-photos")
+    .upload(storagePath, file, { contentType: file.type || `image/${extension}`, upsert: false });
+
+  if (uploadError) throw uploadError;
+
+  const { data: publicUrl } = supabase.storage.from("itinerary-photos").getPublicUrl(storagePath);
+  const imageUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
+
+  const { error: upsertError } = await supabase
+    .from("itinerary_item_photos")
+    .upsert(
+      {
+        item_id: itemId,
+        member_id: memberId,
+        image_url: imageUrl,
+        storage_path: storagePath
+      },
+      { onConflict: "item_id,member_id" }
+    );
+
+  if (upsertError) throw upsertError;
+
+  if (existing.data?.storage_path) {
+    await supabase.storage.from("itinerary-photos").remove([existing.data.storage_path]);
+  }
 }
 
 export async function toggleRecommendation(placeId: string, memberId: string, active: boolean) {
@@ -380,6 +453,8 @@ function mapDay(row: any) {
     city: row.city,
     summary: row.summary,
     lodging: row.lodging ?? "",
+    lodgingAddress: row.lodging_address ?? "",
+    lodgingMapUrl: row.lodging_map_url ?? "",
     goal: row.goal ?? "",
     caution: row.caution ?? ""
   };
@@ -393,11 +468,14 @@ function mapItineraryItem(row: any) {
     sortOrder: row.sort_order,
     timeLabel: row.time_label,
     title: row.title,
+    itemType: row.item_type ?? "place",
     city: row.city ?? "",
     placeName: row.place_name ?? "",
+    address: row.address ?? row.place_name ?? "",
     mapUrl: row.map_url ?? "",
     description: row.description ?? "",
-    importance: row.importance
+    importance: row.importance,
+    createdByMemberId: row.created_by_member_id ?? null
   };
 }
 
@@ -407,8 +485,21 @@ function mapMapLink(row: any) {
     dayId: row.day_id,
     sortOrder: row.sort_order,
     placeName: row.place_name,
+    address: row.address ?? row.place_name,
     purpose: row.purpose,
     mapUrl: row.map_url
+  };
+}
+
+function mapItineraryPhoto(row: any): ItineraryItemPhoto {
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    memberId: row.member_id,
+    imageUrl: row.image_url,
+    storagePath: row.storage_path,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -474,4 +565,14 @@ function mapConfirmation(row: any): SettlementConfirmation {
     memberId: row.member_id,
     confirmedAt: row.confirmed_at
   };
+}
+
+function getImageExtension(file: File) {
+  if (file.type === "image/png") return "png";
+  if (file.type === "image/webp") return "webp";
+  if (file.type === "image/gif") return "gif";
+
+  const fallback = file.name.split(".").pop()?.toLowerCase();
+  if (fallback && /^[a-z0-9]+$/.test(fallback)) return fallback;
+  return "jpg";
 }

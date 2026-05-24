@@ -48,6 +48,8 @@ async function seed() {
       city: day.city,
       summary: day.summary,
       lodging: day.lodging,
+      lodging_address: day.lodgingAddress,
+      lodging_map_url: day.lodgingMapUrl,
       goal: day.goal,
       caution: day.caution
     }))
@@ -62,11 +64,14 @@ async function seed() {
       sort_order: planItem.sortOrder,
       time_label: planItem.timeLabel,
       title: planItem.title,
+      item_type: planItem.itemType,
       city: planItem.city,
       place_name: planItem.placeName,
+      address: planItem.address,
       map_url: planItem.mapUrl,
       description: planItem.description,
-      importance: planItem.importance
+      importance: planItem.importance,
+      created_by_member_id: planItem.createdByMemberId
     }))
   );
 
@@ -77,6 +82,7 @@ async function seed() {
       day_id: mapLink.dayId,
       sort_order: mapLink.sortOrder,
       place_name: mapLink.placeName,
+      address: mapLink.address,
       purpose: mapLink.purpose,
       map_url: mapLink.mapUrl
     }))

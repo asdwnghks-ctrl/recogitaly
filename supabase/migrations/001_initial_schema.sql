@@ -30,6 +30,8 @@ create table if not exists public.trip_days (
   city text not null,
   summary text not null,
   lodging text not null default '',
+  lodging_address text not null default '',
+  lodging_map_url text not null default '',
   goal text not null default '',
   caution text not null default '',
   created_at timestamptz not null default now(),
@@ -43,11 +45,14 @@ create table if not exists public.itinerary_items (
   sort_order integer not null,
   time_label text not null,
   title text not null,
+  item_type text not null check (item_type in ('place', 'note')) default 'place',
   city text not null default '',
   place_name text not null default '',
+  address text not null default '',
   map_url text not null default '',
   description text not null default '',
   importance text not null check (importance in ('high', 'normal', 'low')) default 'normal',
+  created_by_member_id text references public.members(id) on delete set null,
   created_at timestamptz not null default now(),
   unique (day_id, sort_order)
 );
@@ -57,10 +62,22 @@ create table if not exists public.day_map_links (
   day_id text not null references public.trip_days(id) on delete cascade,
   sort_order integer not null,
   place_name text not null,
+  address text not null default '',
   purpose text not null default '',
   map_url text not null,
   created_at timestamptz not null default now(),
   unique (day_id, sort_order)
+);
+
+create table if not exists public.itinerary_item_photos (
+  id uuid primary key default gen_random_uuid(),
+  item_id text not null references public.itinerary_items(id) on delete cascade,
+  member_id text not null references public.members(id) on delete cascade,
+  image_url text not null,
+  storage_path text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (item_id, member_id)
 );
 
 create table if not exists public.place_candidates (
@@ -180,10 +197,16 @@ create trigger set_place_candidates_updated_at
 before update on public.place_candidates
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_itinerary_item_photos_updated_at on public.itinerary_item_photos;
+create trigger set_itinerary_item_photos_updated_at
+before update on public.itinerary_item_photos
+for each row execute function public.set_updated_at();
+
 alter table public.trips enable row level security;
 alter table public.members enable row level security;
 alter table public.trip_days enable row level security;
 alter table public.itinerary_items enable row level security;
+alter table public.itinerary_item_photos enable row level security;
 alter table public.day_map_links enable row level security;
 alter table public.place_candidates enable row level security;
 alter table public.place_recommendations enable row level security;
@@ -199,6 +222,10 @@ create policy "public read trips" on public.trips for select to anon using (true
 create policy "public read members" on public.members for select to anon using (true);
 create policy "public read trip days" on public.trip_days for select to anon using (true);
 create policy "public read itinerary items" on public.itinerary_items for select to anon using (true);
+create policy "public read itinerary item photos" on public.itinerary_item_photos for select to anon using (true);
+create policy "public insert itinerary item photos" on public.itinerary_item_photos for insert to anon with check (true);
+create policy "public update itinerary item photos" on public.itinerary_item_photos for update to anon using (true) with check (true);
+create policy "public delete itinerary item photos" on public.itinerary_item_photos for delete to anon using (true);
 create policy "public read day map links" on public.day_map_links for select to anon using (true);
 create policy "public read candidates" on public.place_candidates for select to anon using (true);
 create policy "public insert candidates" on public.place_candidates for insert to anon with check (true);
@@ -216,3 +243,24 @@ create policy "public insert expenses" on public.expenses for insert to anon wit
 create policy "public read confirmations" on public.settlement_confirmations for select to anon using (true);
 create policy "public insert confirmations" on public.settlement_confirmations for insert to anon with check (true);
 create policy "public read exchange rates" on public.exchange_rates for select to anon using (true);
+
+insert into storage.buckets (id, name, public)
+values ('itinerary-photos', 'itinerary-photos', true)
+on conflict (id) do update set public = true;
+
+create policy "public read itinerary photo objects"
+on storage.objects for select to anon
+using (bucket_id = 'itinerary-photos');
+
+create policy "public insert itinerary photo objects"
+on storage.objects for insert to anon
+with check (bucket_id = 'itinerary-photos');
+
+create policy "public update itinerary photo objects"
+on storage.objects for update to anon
+using (bucket_id = 'itinerary-photos')
+with check (bucket_id = 'itinerary-photos');
+
+create policy "public delete itinerary photo objects"
+on storage.objects for delete to anon
+using (bucket_id = 'itinerary-photos');

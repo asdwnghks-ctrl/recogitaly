@@ -3,13 +3,16 @@
 import {
   ArrowDown,
   ArrowUp,
+  BedDouble,
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
   ClipboardCheck,
   ExternalLink,
+  GripVertical,
   Heart,
   Home,
+  ImagePlus,
   MapPin,
   MessageCircle,
   MoreHorizontal,
@@ -17,15 +20,16 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  StickyNote,
   Trash2,
   UserRound,
   WalletCards
 } from "lucide-react";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  addCandidate,
   addComment,
   addExpense,
+  addItineraryItem,
   confirmSettlement,
   deleteCandidate,
   deleteExpense,
@@ -34,8 +38,10 @@ import {
   fallbackData,
   loadAppData,
   markVisited,
+  reorderItineraryItems,
   reorderMapLinks,
   toggleRecommendation,
+  uploadItineraryPhoto,
   verifyAdminCode
 } from "@/lib/appStore";
 import { calculateSettlement, getExchangeRate, getOpenRound } from "@/lib/settlement";
@@ -44,6 +50,8 @@ import type {
   Currency,
   ExpenseCategory,
   ExpenseType,
+  ItineraryItemPhoto,
+  ItineraryItemType,
   ItineraryItem,
   Member,
   PlaceCandidate,
@@ -63,6 +71,7 @@ declare global {
 
 type TabId = "home" | "schedule" | "accounting" | "more";
 type CandidateInputMode = "link" | "map";
+type DropPosition = "before" | "after";
 
 const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
@@ -581,7 +590,18 @@ function ScheduleView({
   runAction: (action: () => Promise<void>, successMessage: string) => void;
 }) {
   const [anchor, setAnchor] = useState<{ afterItemId: string | null; beforeItemId: string | null } | null>(null);
-  const items = data.itineraryItems.filter((item) => item.dayId === selectedDay.id);
+  const [draggingItemId, setDraggingItemId] = useState<string | null>(null);
+  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
+  const items = data.itineraryItems
+    .filter((item) => item.dayId === selectedDay.id)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const itemPhotosByItemId = useMemo(() => {
+    const grouped = new Map<string, ItineraryItemPhoto[]>();
+    data.itineraryPhotos.forEach((photo) => {
+      grouped.set(photo.itemId, [...(grouped.get(photo.itemId) ?? []), photo]);
+    });
+    return grouped;
+  }, [data.itineraryPhotos]);
   const links = data.mapLinks
     .filter((link) => link.dayId === selectedDay.id)
     .sort((a, b) => a.sortOrder - b.sortOrder);
@@ -602,6 +622,24 @@ function ScheduleView({
   const removeMapLink = (linkId: string) => {
     if (!window.confirm("이 지도 링크를 삭제할까요?")) return;
     runAction(() => deleteMapLink(linkId, currentMember.id), "지도 링크를 삭제했어요.");
+  };
+
+  const dropItineraryItem = (targetItemId: string, position: DropPosition) => {
+    if (!draggingItemId || draggingItemId === targetItemId) return;
+
+    const nextItems = [...items];
+    const draggingIndex = nextItems.findIndex((item) => item.id === draggingItemId);
+    if (draggingIndex < 0) return;
+
+    const [draggingItem] = nextItems.splice(draggingIndex, 1);
+    const targetIndex = nextItems.findIndex((item) => item.id === targetItemId);
+    if (targetIndex < 0) return;
+
+    nextItems.splice(position === "after" ? targetIndex + 1 : targetIndex, 0, draggingItem);
+    runAction(
+      () => reorderItineraryItems(selectedDay.id, nextItems.map((item) => item.id), currentMember.id),
+      "일정 순서를 바꿨어요."
+    );
   };
 
   return (
@@ -631,13 +669,51 @@ function ScheduleView({
       </section>
 
       <section className="timeline">
+        <LodgingCard day={selectedDay} edge="start" />
         {items.map((item, index) => {
           const nextItem = items[index + 1] ?? null;
-          const betweenCandidates = data.candidates.filter((candidate) => candidate.afterItineraryItemId === item.id);
+          const betweenCandidates = data.candidates
+            .filter((candidate) => candidate.afterItineraryItemId === item.id)
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          const isDropTarget = dragOverItemId === item.id && draggingItemId !== item.id;
 
           return (
-            <div key={item.id} className="timeline-segment">
-              <TimelineItem item={item} />
+            <div
+              key={item.id}
+              className={isDropTarget ? "timeline-segment drop-target" : "timeline-segment"}
+              onDragOver={(event) => {
+                event.preventDefault();
+                if (draggingItemId && draggingItemId !== item.id) {
+                  setDragOverItemId(item.id);
+                }
+              }}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setDragOverItemId(null);
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const rect = event.currentTarget.getBoundingClientRect();
+                const position = event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+                dropItineraryItem(item.id, position);
+                setDraggingItemId(null);
+                setDragOverItemId(null);
+              }}
+            >
+              <TimelineItem
+                item={item}
+                photos={itemPhotosByItemId.get(item.id) ?? []}
+                members={data.members}
+                currentMember={currentMember}
+                busy={busy}
+                runAction={runAction}
+                onDragStart={() => setDraggingItemId(item.id)}
+                onDragEnd={() => {
+                  setDraggingItemId(null);
+                  setDragOverItemId(null);
+                }}
+              />
               <div className="between-slot">
                 {betweenCandidates.map((candidate) => (
                   <CandidateCard
@@ -651,18 +727,17 @@ function ScheduleView({
                   />
                 ))}
                 {anchor?.afterItemId === item.id ? (
-                  <CandidateForm
+                  <ItineraryItemForm
                     day={selectedDay}
                     currentMember={currentMember}
                     afterItemId={item.id}
-                    beforeItemId={nextItem?.id ?? null}
                     busy={busy}
                     onCancel={() => setAnchor(null)}
                     onSubmit={(input) =>
                       runAction(async () => {
-                        await addCandidate(input);
+                        await addItineraryItem(input);
                         setAnchor(null);
-                      }, "후보를 올렸어요.")
+                      }, "일정을 추가했어요.")
                     }
                   />
                 ) : (
@@ -672,13 +747,38 @@ function ScheduleView({
                     onClick={() => setAnchor({ afterItemId: item.id, beforeItemId: nextItem?.id ?? null })}
                   >
                     <Plus size={16} aria-hidden />
-                    이 사이에 후보 추가
+                    아래에 일정/노트 추가
                   </button>
                 )}
               </div>
             </div>
           );
         })}
+        {!items.length && (
+          <div className="between-slot empty-day-slot">
+            {anchor?.afterItemId === null ? (
+              <ItineraryItemForm
+                day={selectedDay}
+                currentMember={currentMember}
+                afterItemId={null}
+                busy={busy}
+                onCancel={() => setAnchor(null)}
+                onSubmit={(input) =>
+                  runAction(async () => {
+                    await addItineraryItem(input);
+                    setAnchor(null);
+                  }, "일정을 추가했어요.")
+                }
+              />
+            ) : (
+              <button type="button" className="add-between-button" onClick={() => setAnchor({ afterItemId: null, beforeItemId: null })}>
+                <Plus size={16} aria-hidden />
+                일정/노트 추가
+              </button>
+            )}
+          </div>
+        )}
+        <LodgingCard day={selectedDay} edge="end" />
       </section>
 
       <section className="section-block">
@@ -692,7 +792,10 @@ function ScheduleView({
               <div key={link.id} className="map-link-row">
                 <a className="map-link-card" href={link.mapUrl} target="_blank" rel="noreferrer">
                   <MapPin size={16} aria-hidden />
-                  <span>{link.placeName}</span>
+                  <span>
+                    <strong>{link.placeName}</strong>
+                    {link.address && <small>{link.address}</small>}
+                  </span>
                   <ExternalLink size={14} aria-hidden />
                 </a>
                 <div className="map-link-controls">
@@ -727,11 +830,10 @@ function ScheduleView({
   );
 }
 
-function CandidateForm({
+function ItineraryItemForm({
   day,
   currentMember,
   afterItemId,
-  beforeItemId,
   busy,
   onCancel,
   onSubmit
@@ -739,26 +841,28 @@ function CandidateForm({
   day: TripDay;
   currentMember: Member;
   afterItemId: string | null;
-  beforeItemId: string | null;
   busy: boolean;
   onCancel: () => void;
-  onSubmit: (input: Parameters<typeof addCandidate>[0]) => void;
+  onSubmit: (input: Parameters<typeof addItineraryItem>[0]) => void;
 }) {
+  const [itemType, setItemType] = useState<ItineraryItemType>("place");
   const [inputMode, setInputMode] = useState<CandidateInputMode>("link");
-  const [name, setName] = useState("");
+  const [timeLabel, setTimeLabel] = useState("");
+  const [title, setTitle] = useState("");
+  const [placeName, setPlaceName] = useState("");
+  const [address, setAddress] = useState("");
   const [city, setCity] = useState(day.city.split("/")[0]);
-  const [category, setCategory] = useState<PlaceCategory>("food");
   const [mapUrl, setMapUrl] = useState("");
-  const [reason, setReason] = useState("");
+  const [description, setDescription] = useState("");
   const [lookupStatus, setLookupStatus] = useState("");
-  const nameTouchedRef = useRef(false);
+  const placeTouchedRef = useRef(false);
 
   useEffect(() => {
     setCity(day.city.split("/")[0]);
   }, [day.id, day.city]);
 
   useEffect(() => {
-    if (inputMode !== "link") {
+    if (itemType !== "place" || inputMode !== "link") {
       return;
     }
 
@@ -790,8 +894,9 @@ function CandidateForm({
           return;
         }
 
-        if (body?.name && !nameTouchedRef.current) {
-          setName(body.name);
+        if (body?.name && !placeTouchedRef.current) {
+          setTitle((current) => current || body.name);
+          setPlaceName(body.name);
         }
         if (body?.url && body.url !== mapUrl) {
           setMapUrl(body.url);
@@ -808,13 +913,15 @@ function CandidateForm({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [inputMode, mapUrl]);
+  }, [inputMode, itemType, mapUrl]);
 
   const applySelectedPlace = useCallback(
-    (place: { name: string; city: string; mapUrl: string }) => {
-      nameTouchedRef.current = false;
-      setName(place.name);
+    (place: { name: string; city: string; address: string; mapUrl: string }) => {
+      placeTouchedRef.current = false;
+      setTitle(place.name);
+      setPlaceName(place.name);
       setCity(place.city || city);
+      setAddress(place.address);
       setMapUrl(place.mapUrl);
       setLookupStatus("지도에서 선택했어요.");
     },
@@ -826,19 +933,44 @@ function CandidateForm({
       className="candidate-form"
       onSubmit={(event) => {
         event.preventDefault();
+        const cleanTitle = title.trim();
         onSubmit({
-          name: name.trim(),
-          city: city.trim(),
-          category,
-          mapUrl: mapUrl.trim(),
-          reason: reason.trim(),
-          memberId: currentMember.id,
           dayId: day.id,
+          memberId: currentMember.id,
           afterItemId,
-          beforeItemId
+          itemType,
+          timeLabel: timeLabel.trim(),
+          title: cleanTitle,
+          city: itemType === "note" ? day.city.split("/")[0] : city.trim(),
+          placeName: itemType === "note" ? "" : placeName.trim() || cleanTitle,
+          address: itemType === "note" ? "" : address.trim(),
+          mapUrl: itemType === "note" ? "" : mapUrl.trim(),
+          description: description.trim()
         });
       }}
     >
+      <div className="segmented item-type-segmented">
+        <button type="button" className={itemType === "place" ? "selected" : ""} onClick={() => setItemType("place")}>
+          <MapPin size={15} aria-hidden />
+          장소
+        </button>
+        <button type="button" className={itemType === "note" ? "selected" : ""} onClick={() => setItemType("note")}>
+          <StickyNote size={15} aria-hidden />
+          노트
+        </button>
+      </div>
+      <div className="form-grid">
+        <label className="field">
+          <span>시간</span>
+          <input value={timeLabel} onChange={(event) => setTimeLabel(event.target.value)} placeholder={itemType === "note" ? "노트" : "오전, 14:00"} />
+        </label>
+        <label className="field">
+          <span>{itemType === "note" ? "노트 제목" : "일정명"}</span>
+          <input value={title} onChange={(event) => setTitle(event.target.value)} required placeholder={itemType === "note" ? "준비물 체크" : "점심, 카페, 산책..."} />
+        </label>
+      </div>
+      {itemType === "place" && (
+        <>
       <div className="segmented input-mode-segmented">
         <button type="button" className={inputMode === "link" ? "selected" : ""} onClick={() => setInputMode("link")}>
           링크로 추가
@@ -855,10 +987,9 @@ function CandidateForm({
         <input
           value={mapUrl}
           onChange={(event) => {
-            nameTouchedRef.current = false;
+            placeTouchedRef.current = false;
             setMapUrl(event.target.value);
           }}
-          required
           placeholder="https://maps.app.goo.gl/..."
         />
         {lookupStatus && <small className="field-hint">{lookupStatus}</small>}
@@ -867,12 +998,11 @@ function CandidateForm({
         <label className="field">
           <span>장소명</span>
           <input
-            value={name}
+            value={placeName}
             onChange={(event) => {
-              nameTouchedRef.current = true;
-              setName(event.target.value);
+              placeTouchedRef.current = true;
+              setPlaceName(event.target.value);
             }}
-            required
             placeholder="구글 지도 장소명"
           />
         </label>
@@ -881,29 +1011,23 @@ function CandidateForm({
           <input value={city} onChange={(event) => setCity(event.target.value)} required />
         </label>
       </div>
-      <div className="segmented category-segmented">
-        {categoryOptions.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            className={category === option.value ? "selected" : ""}
-            onClick={() => setCategory(option.value)}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
       <label className="field">
-        <span>추천 이유</span>
-        <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} placeholder="왜 가고 싶은지 짧게" />
+        <span>주소</span>
+        <input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="텍스트로 보일 주소" />
+      </label>
+        </>
+      )}
+      <label className="field">
+        <span>{itemType === "note" ? "내용" : "메모"}</span>
+        <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={2} placeholder={itemType === "note" ? "일정표에 남길 노트" : "짧은 메모"} />
       </label>
       <div className="form-actions">
         <button type="button" className="ghost-button" onClick={onCancel}>
           취소
         </button>
-        <button type="submit" className="primary-button" disabled={busy || !name.trim() || !mapUrl.trim()}>
+        <button type="submit" className="primary-button" disabled={busy || !title.trim()}>
           <Send size={16} aria-hidden />
-          올리기
+          추가
         </button>
       </div>
     </form>
@@ -917,7 +1041,7 @@ function PlaceSearchBox({
 }: {
   apiKey: string;
   fallbackCity: string;
-  onSelect: (place: { name: string; city: string; mapUrl: string }) => void;
+  onSelect: (place: { name: string; city: string; address: string; mapUrl: string }) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -967,6 +1091,7 @@ function PlaceSearchBox({
           onSelectRef.current({
             name,
             city: extractPlaceCity(place.address_components, fallbackCity),
+            address: place.formatted_address ?? "",
             mapUrl: place.url || buildGoogleMapsPlaceUrl(name, place.formatted_address, place.place_id)
           });
         });
@@ -1405,6 +1530,7 @@ function MoreView({
         <ol>
           <li>Supabase SQL Editor에서 `supabase/migrations/001_initial_schema.sql` 실행</li>
           <li>`.env`에 Supabase URL, anon key, service role key, 관리자 코드 입력</li>
+          <li>Google Maps 키는 `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`에 입력</li>
           <li>`npm run seed:supabase`로 기본 일정 넣기</li>
         </ol>
       </section>
@@ -1412,14 +1538,85 @@ function MoreView({
   );
 }
 
-function TimelineItem({ item }: { item: ItineraryItem }) {
+function LodgingCard({ day, edge }: { day: TripDay; edge: "start" | "end" }) {
+  if (!day.lodging || (!day.lodgingAddress && !day.lodgingMapUrl)) {
+    return null;
+  }
+
   return (
-    <article className={`timeline-item importance-${item.importance}`}>
+    <article className="lodging-card">
+      <div className="lodging-icon">
+        <BedDouble size={18} aria-hidden />
+      </div>
+      <div>
+        <span>{edge === "start" ? "숙소 출발 고정" : "숙소 복귀 고정"}</span>
+        <strong>{day.lodging}</strong>
+        {day.lodgingAddress && <small>{day.lodgingAddress}</small>}
+      </div>
+      {day.lodgingMapUrl && (
+        <a href={day.lodgingMapUrl} target="_blank" rel="noreferrer" aria-label={`${day.lodging} 지도 열기`}>
+          <MapPin size={18} aria-hidden />
+        </a>
+      )}
+    </article>
+  );
+}
+
+function TimelineItem({
+  item,
+  photos,
+  members,
+  currentMember,
+  busy,
+  runAction,
+  onDragStart,
+  onDragEnd
+}: {
+  item: ItineraryItem;
+  photos: ItineraryItemPhoto[];
+  members: Member[];
+  currentMember: Member;
+  busy: boolean;
+  runAction: (action: () => Promise<void>, successMessage: string) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  const isNote = item.itemType === "note";
+
+  return (
+    <article className={`timeline-item importance-${item.importance} item-type-${item.itemType}`}>
+      <button
+        type="button"
+        className="drag-handle"
+        draggable
+        title="순서 옮기기"
+        aria-label={`${item.title} 순서 옮기기`}
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", item.id);
+          onDragStart();
+        }}
+        onDragEnd={onDragEnd}
+      >
+        <GripVertical size={17} aria-hidden />
+      </button>
       <div className="time-pill">{item.timeLabel}</div>
       <div className="timeline-body">
-        <h3>{item.title}</h3>
-        <p>{item.placeName}</p>
-        <span>{item.description}</span>
+        <div className="timeline-title-row">
+          <h3>{item.title}</h3>
+          {isNote && <span className="badge badge-muted">노트</span>}
+        </div>
+        {!isNote && item.placeName && <p>{item.placeName}</p>}
+        {!isNote && item.address && <small className="address-line">{item.address}</small>}
+        {item.description && <span>{item.description}</span>}
+        <ItineraryPhotoStrip
+          item={item}
+          photos={photos}
+          members={members}
+          currentMember={currentMember}
+          busy={busy}
+          runAction={runAction}
+        />
       </div>
       {item.mapUrl && (
         <a href={item.mapUrl} target="_blank" rel="noreferrer" aria-label={`${item.placeName} 지도 열기`}>
@@ -1427,6 +1624,59 @@ function TimelineItem({ item }: { item: ItineraryItem }) {
         </a>
       )}
     </article>
+  );
+}
+
+function ItineraryPhotoStrip({
+  item,
+  photos,
+  members,
+  currentMember,
+  busy,
+  runAction
+}: {
+  item: ItineraryItem;
+  photos: ItineraryItemPhoto[];
+  members: Member[];
+  currentMember: Member;
+  busy: boolean;
+  runAction: (action: () => Promise<void>, successMessage: string) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const myPhoto = photos.find((photo) => photo.memberId === currentMember.id);
+
+  return (
+    <div className="photo-strip">
+      {photos.length > 0 && (
+        <div className="photo-list">
+          {photos.map((photo) => {
+            const member = memberById(members, photo.memberId);
+            return (
+              <figure key={photo.id} className="photo-thumb">
+                <img src={photo.imageUrl} alt={`${member?.name ?? "멤버"} ${item.title} 사진`} />
+                <figcaption style={{ color: member?.color }}>{member?.name ?? "멤버"}</figcaption>
+              </figure>
+            );
+          })}
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          runAction(() => uploadItineraryPhoto(item.id, currentMember.id, file), "사진을 올렸어요.");
+        }}
+      />
+      <button type="button" className="photo-upload-button" disabled={busy} onClick={() => fileInputRef.current?.click()}>
+        <ImagePlus size={15} aria-hidden />
+        {myPhoto ? "내 사진 교체" : "내 사진 추가"}
+      </button>
+    </div>
   );
 }
 

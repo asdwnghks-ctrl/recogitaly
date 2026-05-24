@@ -19,6 +19,7 @@ export type Trip = {
 };
 
 export type Importance = "high" | "normal" | "low";
+export type ItineraryItemType = "place" | "note";
 
 export type TripDay = {
   id: string;
@@ -30,6 +31,8 @@ export type TripDay = {
   city: string;
   summary: string;
   lodging: string;
+  lodgingAddress: string;
+  lodgingMapUrl: string;
   goal: string;
   caution: string;
 };
@@ -41,11 +44,14 @@ export type ItineraryItem = {
   sortOrder: number;
   timeLabel: string;
   title: string;
+  itemType: ItineraryItemType;
   city: string;
   placeName: string;
+  address: string;
   mapUrl: string;
   description: string;
   importance: Importance;
+  createdByMemberId: string | null;
 };
 
 export type DayMapLink = {
@@ -53,8 +59,19 @@ export type DayMapLink = {
   dayId: string;
   sortOrder: number;
   placeName: string;
+  address: string;
   purpose: string;
   mapUrl: string;
+};
+
+export type ItineraryItemPhoto = {
+  id: string;
+  itemId: string;
+  memberId: string;
+  imageUrl: string;
+  storagePath: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PlaceCategory =
@@ -165,6 +182,7 @@ export type AppData = {
   members: Member[];
   days: TripDay[];
   itineraryItems: ItineraryItem[];
+  itineraryPhotos: ItineraryItemPhoto[];
   mapLinks: DayMapLink[];
   candidates: PlaceCandidate[];
   recommendations: PlaceRecommendation[];

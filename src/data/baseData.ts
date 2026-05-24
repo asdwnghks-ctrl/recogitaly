@@ -47,6 +47,35 @@ export const members: Member[] = [
   }
 ];
 
+const google = "https://www.google.com/maps/search/?api=1&query=";
+
+const lodgingByName: Record<string, { address: string; mapUrl: string }> = {
+  "로마 아파트": {
+    address: "Via Luigi Fincati 14 int 11, Roma",
+    mapUrl: `${google}via+luigi+fincati+14+int+11+Roma`
+  },
+  "베네치아 아파트": {
+    address: "Via Nervesa 4/06, Venezia",
+    mapUrl: `${google}Via+Nervesa+4+06+Venezia`
+  },
+  "돌로미티 숙소": {
+    address: "Via di Cercena 98, Cercena, Trentino-Alto Adige 38031",
+    mapUrl: `${google}via+di+cercena+98+cercena+trentino+alto+adige+38031`
+  },
+  "피렌체 숙소": {
+    address: "Viale Giovanni Battista Morgagni 23, Firenze",
+    mapUrl: `${google}viale+giovanni+battista+morgagni+23+Florence`
+  }
+};
+
+function lodgingDetails(name: string) {
+  const lodging = lodgingByName[name];
+  return {
+    lodgingAddress: lodging?.address ?? "",
+    lodgingMapUrl: lodging?.mapUrl ?? ""
+  };
+}
+
 export const tripDays: TripDay[] = [
   {
     id: "day-01",
@@ -58,6 +87,7 @@ export const tripDays: TripDay[] = [
     city: "로마",
     summary: "인천 출발, 로마 다빈치 공항 도착",
     lodging: "로마 아파트",
+    ...lodgingDetails("로마 아파트"),
     goal: "이탈리아 도착, 숙소 이동, Eataly에서 장보기, 숙소 웰컴 파티",
     caution: "6월 2일은 이탈리아 공화국의 날이라 도심 행사와 교통 통제가 있을 수 있음"
   },
@@ -71,6 +101,7 @@ export const tripDays: TripDay[] = [
     city: "로마",
     summary: "로마 풀 투어, 19:15 집회",
     lodging: "로마 아파트",
+    ...lodgingDetails("로마 아파트"),
     goal: "로마 고대 유적과 대표 광장을 연결해서 하루 풀 투어 후 저녁 집회 참석",
     caution: "도보 이동이 많은 날이므로 편한 신발, 물, 중간 휴식 필수"
   },
@@ -84,6 +115,7 @@ export const tripDays: TripDay[] = [
     city: "로마",
     summary: "바티칸 관광, 숙소 휴식, 테베레 러닝, 트라스테베레 맥주",
     lodging: "로마 아파트",
+    ...lodgingDetails("로마 아파트"),
     goal: "오전에는 바티칸 쪽을 보고, 오후에는 쉬었다가 저녁에 가볍게 뛰고 맥주",
     caution: "바티칸 권역은 오전부터 사람이 많을 수 있어 일찍 움직이기"
   },
@@ -97,6 +129,7 @@ export const tripDays: TripDay[] = [
     city: "로마/피렌체/베네치아",
     summary: "로마 체크아웃, 피렌체 기차 이동, 렌터카 픽업, 베네치아 이동",
     lodging: "베네치아 아파트",
+    ...lodgingDetails("베네치아 아파트"),
     goal: "로마에서 피렌체까지 기차 이동 후 렌터카를 픽업하고 베네치아로 이동",
     caution: "11:55 기차와 14:30 렌터카 픽업이 고정이라 이동은 여유 있게"
   },
@@ -110,6 +143,7 @@ export const tripDays: TripDay[] = [
     city: "돌로미티",
     summary: "베네치아 체크아웃, 트레치메 트래킹, 돌로미티 이동",
     lodging: "돌로미티 숙소",
+    ...lodgingDetails("돌로미티 숙소"),
     goal: "트레치메 트래킹을 중심으로 돌로미티 첫날 핵심 풍경 보기",
     caution: "09:00 트레치메 주차 예약 고정. 06:00 출발 엄수"
   },
@@ -123,6 +157,7 @@ export const tripDays: TripDay[] = [
     city: "돌로미티",
     summary: "카네자이 리프트, 러닝, 17:00 집회",
     lodging: "돌로미티 숙소",
+    ...lodgingDetails("돌로미티 숙소"),
     goal: "낮에는 산악 리프트와 러닝으로 돌로미티를 즐기고 저녁에는 집회 참석",
     caution: "17:00 집회 참석 고정. 리프트 운영 시간과 이동 시간을 미리 확인"
   },
@@ -136,6 +171,7 @@ export const tripDays: TripDay[] = [
     city: "돌로미티",
     summary: "오르티세이, 세체다, 알페 디 시우시",
     lodging: "돌로미티 숙소",
+    ...lodgingDetails("돌로미티 숙소"),
     goal: "서부 돌로미티 대표 코스인 세체다와 알페 디 시우시를 하루에 보기",
     caution: "케이블카 운영 시간, 날씨, 주차/이동 시간을 미리 확인"
   },
@@ -149,6 +185,7 @@ export const tripDays: TripDay[] = [
     city: "돌로미티/피렌체",
     summary: "돌로미티 체크아웃, 피렌체 이동, 렌터카 반납",
     lodging: "피렌체 숙소",
+    ...lodgingDetails("피렌체 숙소"),
     goal: "14:30 반납 시간에 맞춰 피렌체로 내려오고 여유로운 저녁 보내기",
     caution: "14:30 차량 반납 고정. 지연되면 중간 경유지는 생략"
   },
@@ -162,6 +199,7 @@ export const tripDays: TripDay[] = [
     city: "피렌체",
     summary: "두오모, 산 로렌초, 시뇨리아, 베키오 다리, 미켈란젤로 광장",
     lodging: "피렌체 숙소",
+    ...lodgingDetails("피렌체 숙소"),
     goal: "피렌체 중심부와 올트라르노를 걸으며 풀데이 즐기기",
     caution: "미켈란젤로 광장 노을 시간에 맞춰 후반 동선 조절"
   },
@@ -175,6 +213,7 @@ export const tripDays: TripDay[] = [
     city: "피렌체/로마",
     summary: "피렌체 체크아웃, 로마 기차 이동, 로마 다빈치 공항 출발",
     lodging: "기내",
+    ...lodgingDetails("기내"),
     goal: "기차로 로마 이동 후 여유 있게 공항으로 이동해 한국행 항공편 탑승",
     caution: "출국 수속과 공항 이동 시간을 넉넉히 확보"
   },
@@ -188,12 +227,11 @@ export const tripDays: TripDay[] = [
     city: "인천",
     summary: "인천 도착",
     lodging: "",
+    ...lodgingDetails(""),
     goal: "한국 도착 및 귀가",
     caution: ""
   }
 ];
-
-const google = "https://www.google.com/maps/search/?api=1&query=";
 
 export const itineraryItems: ItineraryItem[] = [
   item("01-01", "day-01", 1, "12:35", "인천 출발", "인천", "인천국제공항", `${google}Incheon+International+Airport`, "로마행 항공편 탑승", "high"),
@@ -297,6 +335,7 @@ export const mapLinks: DayMapLink[] = itineraryItems
     dayId: planItem.dayId,
     sortOrder: index + 1,
     placeName: planItem.placeName,
+    address: planItem.address,
     purpose: planItem.title,
     mapUrl: planItem.mapUrl
   }));
@@ -311,7 +350,8 @@ function item(
   placeName: string,
   mapUrl: string,
   description: string,
-  importance: "high" | "normal" | "low"
+  importance: "high" | "normal" | "low",
+  address = placeName
 ): ItineraryItem {
   return {
     id: `item-${id}`,
@@ -320,10 +360,13 @@ function item(
     sortOrder,
     timeLabel,
     title,
+    itemType: "place",
     city,
     placeName,
+    address,
     mapUrl,
     description,
-    importance
+    importance,
+    createdByMemberId: null
   };
 }
