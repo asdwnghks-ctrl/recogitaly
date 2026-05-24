@@ -27,6 +27,7 @@
 - [여행 계획 정리](docs/11-trip-plan.md)
 - [회계와 정산 흐름](docs/12-accounting-flow.md)
 - [브랜딩과 타이틀](docs/13-branding.md)
+- [구현 정리](docs/14-implementation-summary.md)
 
 ## 주요 환경 변수
 
