@@ -666,7 +666,8 @@ a {
 }
 
 .lodging-icon,
-.lodging-card a {
+.lodging-card a,
+.lodging-copy-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -676,6 +677,16 @@ a {
   border-radius: 8px;
   color: var(--blue);
   background: var(--white);
+}
+
+.lodging-copy-button {
+  padding: 0;
+}
+
+.lodging-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .lodging-card div:nth-child(2) {
@@ -695,6 +706,11 @@ a {
 .lodging-card strong,
 .lodging-card small {
   overflow-wrap: anywhere;
+}
+
+.lodging-card strong {
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .photo-strip {

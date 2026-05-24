@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardCheck,
+  Copy,
   ExternalLink,
   GripVertical,
   Heart,
@@ -75,6 +76,11 @@ declare global {
 type TabId = "home" | "schedule" | "accounting" | "more";
 type CandidateInputMode = "link" | "map";
 type DropPosition = "before" | "after";
+type LodgingPoint = {
+  name: string;
+  address: string;
+  mapUrl: string;
+};
 type PointerDragState = {
   itemId: string;
   pointerId: number;
@@ -616,6 +622,10 @@ function ScheduleView({
   const links = data.mapLinks
     .filter((link) => link.dayId === selectedDay.id)
     .sort((a, b) => a.sortOrder - b.sortOrder);
+  const selectedDayIndex = data.days.findIndex((day) => day.id === selectedDay.id);
+  const previousDay = selectedDayIndex > 0 ? data.days[selectedDayIndex - 1] : null;
+  const departureLodging = getLodgingPoint(previousDay) ?? getLodgingPoint(selectedDay);
+  const arrivalLodging = getLodgingPoint(selectedDay);
 
   const moveMapLink = (linkId: string, direction: -1 | 1) => {
     const currentIndex = links.findIndex((link) => link.id === linkId);
@@ -741,7 +751,7 @@ function ScheduleView({
       </section>
 
       <section className="timeline">
-        <LodgingCard day={selectedDay} edge="start" />
+        <LodgingCard lodging={departureLodging} edge="start" />
         {items.map((item, index) => {
           const nextItem = items[index + 1] ?? null;
           const betweenCandidates = data.candidates
@@ -868,7 +878,7 @@ function ScheduleView({
             )}
           </div>
         )}
-        <LodgingCard day={selectedDay} edge="end" />
+        <LodgingCard lodging={arrivalLodging} edge="end" />
       </section>
 
       <section className="section-block">
@@ -1638,10 +1648,12 @@ function MoreView({
   );
 }
 
-function LodgingCard({ day, edge }: { day: TripDay; edge: "start" | "end" }) {
-  if (!day.lodging || (!day.lodgingAddress && !day.lodgingMapUrl)) {
+function LodgingCard({ lodging, edge }: { lodging: LodgingPoint | null; edge: "start" | "end" }) {
+  if (!lodging) {
     return null;
   }
+
+  const heading = lodging.address || lodging.name;
 
   return (
     <article className="lodging-card">
@@ -1649,15 +1661,30 @@ function LodgingCard({ day, edge }: { day: TripDay; edge: "start" | "end" }) {
         <BedDouble size={18} aria-hidden />
       </div>
       <div>
-        <span>{edge === "start" ? "숙소 출발 고정" : "숙소 복귀 고정"}</span>
-        <strong>{day.lodging}</strong>
-        {day.lodgingAddress && <small>{day.lodgingAddress}</small>}
+        <span>{edge === "start" ? "출발 숙소" : "도착 숙소"}</span>
+        <strong title={heading}>{heading}</strong>
+        {lodging.address && <small>{lodging.name}</small>}
       </div>
-      {day.lodgingMapUrl && (
-        <a href={day.lodgingMapUrl} target="_blank" rel="noreferrer" aria-label={`${day.lodging} 지도 열기`}>
-          <MapPin size={18} aria-hidden />
-        </a>
-      )}
+      <div className="lodging-actions">
+        {lodging.address && (
+          <button
+            type="button"
+            className="lodging-copy-button"
+            title="주소 복사"
+            aria-label={`${lodging.name} 주소 복사`}
+            onClick={() => {
+              void window.navigator.clipboard?.writeText(lodging.address);
+            }}
+          >
+            <Copy size={17} aria-hidden />
+          </button>
+        )}
+        {lodging.mapUrl && (
+          <a href={lodging.mapUrl} target="_blank" rel="noreferrer" aria-label={`${lodging.name} 지도 열기`}>
+            <MapPin size={18} aria-hidden />
+          </a>
+        )}
+      </div>
     </article>
   );
 }
@@ -1932,6 +1959,18 @@ function getNearestDay(days: TripDay[]) {
   const today = new Date();
   const todayKey = today.toISOString().slice(0, 10);
   return days.find((day) => day.date >= todayKey) ?? days[days.length - 1];
+}
+
+function getLodgingPoint(day: TripDay | null): LodgingPoint | null {
+  if (!day?.lodging) {
+    return null;
+  }
+
+  return {
+    name: day.lodging,
+    address: day.lodgingAddress,
+    mapUrl: day.lodgingMapUrl
+  };
 }
 
 function memberById(members: Member[], memberId: string) {
