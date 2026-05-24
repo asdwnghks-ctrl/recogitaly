@@ -10,6 +10,7 @@ import type {
   ItineraryItemType,
   ItineraryItemPhoto,
   PlaceCandidate,
+  PlaceCandidatePhoto,
   PlaceCategory,
   PlaceComment,
   PlaceRecommendation,
@@ -21,6 +22,7 @@ import type {
 
 const emptyDynamicData = {
   candidates: [],
+  candidatePhotos: [],
   recommendations: [],
   comments: [],
   visitChecks: [],
@@ -81,6 +83,7 @@ export async function loadAppData(): Promise<LoadResult> {
 
     const [
       candidatesResult,
+      candidatePhotosResult,
       recommendationsResult,
       commentsResult,
       visitsResult,
@@ -90,6 +93,7 @@ export async function loadAppData(): Promise<LoadResult> {
       confirmationsResult
     ] = await Promise.all([
       safeQuery(supabase.from("place_candidates").select("*").order("created_at", { ascending: false })),
+      safeQuery(supabase.from("place_candidate_photos").select("*").order("created_at")),
       safeQuery(supabase.from("place_recommendations").select("*").order("created_at")),
       safeQuery(supabase.from("place_comments").select("*").order("created_at")),
       safeQuery(supabase.from("visit_checks").select("*").order("visited_at", { ascending: false })),
@@ -109,6 +113,7 @@ export async function loadAppData(): Promise<LoadResult> {
         itineraryItems: itemsResult.data?.length ? itemsResult.data.map(mapItineraryItem) : itineraryItems,
         mapLinks: mapLinksResult.data?.length ? mapLinksResult.data.map(mapMapLink) : mapLinks,
         candidates: candidatesResult.data?.map(mapCandidate) ?? [],
+        candidatePhotos: candidatePhotosResult.data?.map(mapCandidatePhoto) ?? [],
         recommendations: recommendationsResult.data?.map(mapRecommendation) ?? [],
         comments: commentsResult.data?.map(mapComment) ?? [],
         itineraryPhotos: itemPhotosResult.data?.map(mapItineraryPhoto) ?? [],
@@ -245,6 +250,53 @@ export async function uploadItineraryPhoto(itemId: string, memberId: string, fil
 
   if (existing.data?.storage_path) {
     await supabase.storage.from("itinerary-photos").remove([existing.data.storage_path]);
+  }
+}
+
+export async function uploadCandidatePhoto(placeId: string, memberId: string, file: File) {
+  const supabase = requireSupabase();
+  if (!file.type.startsWith("image/")) {
+    throw new Error("이미지 파일만 올릴 수 있어요.");
+  }
+
+  const existing = await supabase
+    .from("place_candidate_photos")
+    .select("storage_path")
+    .eq("place_id", placeId)
+    .eq("member_id", memberId)
+    .maybeSingle();
+
+  if (existing.error) {
+    throw existing.error;
+  }
+
+  const extension = getImageExtension(file);
+  const storagePath = `${placeId}/${memberId}-${Date.now()}.${extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from("place-candidate-photos")
+    .upload(storagePath, file, { contentType: file.type || `image/${extension}`, upsert: false });
+
+  if (uploadError) throw uploadError;
+
+  const { data: publicUrl } = supabase.storage.from("place-candidate-photos").getPublicUrl(storagePath);
+  const imageUrl = `${publicUrl.publicUrl}?v=${Date.now()}`;
+
+  const { error: upsertError } = await supabase
+    .from("place_candidate_photos")
+    .upsert(
+      {
+        place_id: placeId,
+        member_id: memberId,
+        image_url: imageUrl,
+        storage_path: storagePath
+      },
+      { onConflict: "place_id,member_id" }
+    );
+
+  if (upsertError) throw upsertError;
+
+  if (existing.data?.storage_path) {
+    await supabase.storage.from("place-candidate-photos").remove([existing.data.storage_path]);
   }
 }
 
@@ -519,6 +571,18 @@ function mapCandidate(row: any): PlaceCandidate {
     reason: row.reason ?? "",
     status: row.status,
     adminNote: row.admin_note ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapCandidatePhoto(row: any): PlaceCandidatePhoto {
+  return {
+    id: row.id,
+    placeId: row.place_id,
+    memberId: row.member_id,
+    imageUrl: row.image_url,
+    storagePath: row.storage_path,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };

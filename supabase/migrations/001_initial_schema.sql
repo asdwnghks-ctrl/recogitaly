@@ -99,6 +99,17 @@ create table if not exists public.place_candidates (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.place_candidate_photos (
+  id uuid primary key default gen_random_uuid(),
+  place_id uuid not null references public.place_candidates(id) on delete cascade,
+  member_id text not null references public.members(id) on delete cascade,
+  image_url text not null,
+  storage_path text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (place_id, member_id)
+);
+
 create table if not exists public.place_recommendations (
   id uuid primary key default gen_random_uuid(),
   place_id uuid not null references public.place_candidates(id) on delete cascade,
@@ -202,6 +213,11 @@ create trigger set_itinerary_item_photos_updated_at
 before update on public.itinerary_item_photos
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_place_candidate_photos_updated_at on public.place_candidate_photos;
+create trigger set_place_candidate_photos_updated_at
+before update on public.place_candidate_photos
+for each row execute function public.set_updated_at();
+
 alter table public.trips enable row level security;
 alter table public.members enable row level security;
 alter table public.trip_days enable row level security;
@@ -209,6 +225,7 @@ alter table public.itinerary_items enable row level security;
 alter table public.itinerary_item_photos enable row level security;
 alter table public.day_map_links enable row level security;
 alter table public.place_candidates enable row level security;
+alter table public.place_candidate_photos enable row level security;
 alter table public.place_recommendations enable row level security;
 alter table public.place_comments enable row level security;
 alter table public.place_approvals enable row level security;
@@ -229,6 +246,10 @@ create policy "public delete itinerary item photos" on public.itinerary_item_pho
 create policy "public read day map links" on public.day_map_links for select to anon using (true);
 create policy "public read candidates" on public.place_candidates for select to anon using (true);
 create policy "public insert candidates" on public.place_candidates for insert to anon with check (true);
+create policy "public read candidate photos" on public.place_candidate_photos for select to anon using (true);
+create policy "public insert candidate photos" on public.place_candidate_photos for insert to anon with check (true);
+create policy "public update candidate photos" on public.place_candidate_photos for update to anon using (true) with check (true);
+create policy "public delete candidate photos" on public.place_candidate_photos for delete to anon using (true);
 create policy "public read recommendations" on public.place_recommendations for select to anon using (true);
 create policy "public insert recommendations" on public.place_recommendations for insert to anon with check (true);
 create policy "public delete own-like recommendations" on public.place_recommendations for delete to anon using (true);
@@ -264,3 +285,24 @@ with check (bucket_id = 'itinerary-photos');
 create policy "public delete itinerary photo objects"
 on storage.objects for delete to anon
 using (bucket_id = 'itinerary-photos');
+
+insert into storage.buckets (id, name, public)
+values ('place-candidate-photos', 'place-candidate-photos', true)
+on conflict (id) do update set public = true;
+
+create policy "public read candidate photo objects"
+on storage.objects for select to anon
+using (bucket_id = 'place-candidate-photos');
+
+create policy "public insert candidate photo objects"
+on storage.objects for insert to anon
+with check (bucket_id = 'place-candidate-photos');
+
+create policy "public update candidate photo objects"
+on storage.objects for update to anon
+using (bucket_id = 'place-candidate-photos')
+with check (bucket_id = 'place-candidate-photos');
+
+create policy "public delete candidate photo objects"
+on storage.objects for delete to anon
+using (bucket_id = 'place-candidate-photos');

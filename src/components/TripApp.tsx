@@ -42,6 +42,7 @@ import {
   reorderItineraryItems,
   reorderMapLinks,
   toggleRecommendation,
+  uploadCandidatePhoto,
   uploadItineraryPhoto,
   verifyAdminCode
 } from "@/lib/appStore";
@@ -56,6 +57,7 @@ import type {
   ItineraryItem,
   Member,
   PlaceCandidate,
+  PlaceCandidatePhoto,
   PlaceCategory,
   PlaceStatus,
   SupabaseStatus,
@@ -1225,6 +1227,7 @@ function CandidateCard({
   const [adminNote, setAdminNote] = useState("");
   const recs = data.recommendations.filter((recommendation) => recommendation.placeId === candidate.id);
   const comments = data.comments.filter((placeComment) => placeComment.placeId === candidate.id);
+  const photos = data.candidatePhotos.filter((photo) => photo.placeId === candidate.id);
   const recommended = recs.some((recommendation) => recommendation.memberId === currentMember.id);
   const suggestedBy = memberById(data.members, candidate.suggestedByMemberId);
   const canDeleteCandidate = canUseAdmin || candidate.suggestedByMemberId === currentMember.id;
@@ -1283,6 +1286,15 @@ function CandidateCard({
           </button>
         )}
       </div>
+
+      <CandidatePhotoStrip
+        candidate={candidate}
+        photos={photos}
+        members={data.members}
+        currentMember={currentMember}
+        busy={busy}
+        runAction={runAction}
+      />
 
       <div className="comment-list">
         {comments.slice(-2).map((placeComment) => {
@@ -1768,6 +1780,59 @@ function ItineraryPhotoStrip({
           event.target.value = "";
           if (!file) return;
           runAction(() => uploadItineraryPhoto(item.id, currentMember.id, file), "사진을 올렸어요.");
+        }}
+      />
+      <button type="button" className="photo-upload-button" disabled={busy} onClick={() => fileInputRef.current?.click()}>
+        <ImagePlus size={15} aria-hidden />
+        {myPhoto ? "내 사진 교체" : "내 사진 추가"}
+      </button>
+    </div>
+  );
+}
+
+function CandidatePhotoStrip({
+  candidate,
+  photos,
+  members,
+  currentMember,
+  busy,
+  runAction
+}: {
+  candidate: PlaceCandidate;
+  photos: PlaceCandidatePhoto[];
+  members: Member[];
+  currentMember: Member;
+  busy: boolean;
+  runAction: (action: () => Promise<void>, successMessage: string) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const myPhoto = photos.find((photo) => photo.memberId === currentMember.id);
+
+  return (
+    <div className="photo-strip candidate-photo-strip">
+      {photos.length > 0 && (
+        <div className="photo-list">
+          {photos.map((photo) => {
+            const member = memberById(members, photo.memberId);
+            return (
+              <figure key={photo.id} className="photo-thumb">
+                <img src={photo.imageUrl} alt={`${member?.name ?? "멤버"} ${candidate.name} 사진`} />
+                <figcaption style={{ color: member?.color }}>{member?.name ?? "멤버"}</figcaption>
+              </figure>
+            );
+          })}
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = "";
+          if (!file) return;
+          runAction(() => uploadCandidatePhoto(candidate.id, currentMember.id, file), "후보 사진을 올렸어요.");
         }}
       />
       <button type="button" className="photo-upload-button" disabled={busy} onClick={() => fileInputRef.current?.click()}>

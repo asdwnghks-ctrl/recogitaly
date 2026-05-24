@@ -120,6 +120,16 @@ export type PlaceComment = {
   createdAt: string;
 };
 
+export type PlaceCandidatePhoto = {
+  id: string;
+  placeId: string;
+  memberId: string;
+  imageUrl: string;
+  storagePath: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type VisitCheck = {
   id: string;
   placeId: string;
@@ -185,6 +195,7 @@ export type AppData = {
   itineraryPhotos: ItineraryItemPhoto[];
   mapLinks: DayMapLink[];
   candidates: PlaceCandidate[];
+  candidatePhotos: PlaceCandidatePhoto[];
   recommendations: PlaceRecommendation[];
   comments: PlaceComment[];
   visitChecks: VisitCheck[];
