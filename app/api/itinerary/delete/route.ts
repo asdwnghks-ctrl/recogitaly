@@ -79,7 +79,10 @@ function isMissingColumnError(error: unknown, columnName: string) {
 
   const maybeError = error as { code?: unknown; message?: unknown };
   const message = typeof maybeError.message === "string" ? maybeError.message : "";
-  return message.includes(`'${columnName}' column`) && (maybeError.code === "PGRST204" || message.includes("schema cache"));
+  return (
+    (message.includes(`'${columnName}' column`) || message.includes(`${columnName} does not exist`)) &&
+    (maybeError.code === "PGRST204" || maybeError.code === "42703" || message.includes("schema cache") || message.includes("does not exist"))
+  );
 }
 
 async function reorderItems(dayId: string, orderedIds: string[]) {
