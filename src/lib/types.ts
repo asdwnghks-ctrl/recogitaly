@@ -93,6 +93,7 @@ export type PlaceCandidate = {
   city: string;
   category: PlaceCategory;
   mapUrl: string;
+  address: string;
   suggestedByMemberId: string;
   relatedDayId: string;
   relatedItineraryItemId: string | null;

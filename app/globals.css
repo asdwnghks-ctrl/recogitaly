@@ -918,6 +918,12 @@ a {
   line-height: 1.45;
 }
 
+.candidate-head .candidate-address {
+  color: var(--ink);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .icon-link {
   flex: 0 0 auto;
   display: inline-flex;

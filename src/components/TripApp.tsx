@@ -648,6 +648,7 @@ function ScheduleView({
         city: input.city,
         category: "etc",
         mapUrl: input.mapUrl,
+        address: input.address,
         reason: input.description,
         memberId: input.memberId,
         dayId: input.dayId,
@@ -1153,12 +1154,47 @@ function CandidateCard({
 }) {
   const [comment, setComment] = useState("");
   const [adminNote, setAdminNote] = useState("");
+  const [metadataAddress, setMetadataAddress] = useState("");
   const recs = data.recommendations.filter((recommendation) => recommendation.placeId === candidate.id);
   const comments = data.comments.filter((placeComment) => placeComment.placeId === candidate.id);
   const photos = data.candidatePhotos.filter((photo) => photo.placeId === candidate.id);
   const recommended = recs.some((recommendation) => recommendation.memberId === currentMember.id);
   const suggestedBy = memberById(data.members, candidate.suggestedByMemberId);
   const canDeleteCandidate = canUseAdmin || candidate.suggestedByMemberId === currentMember.id;
+  const displayAddress = candidate.address || metadataAddress;
+
+  useEffect(() => {
+    if (candidate.address || !candidate.mapUrl || !isGoogleMapsUrl(candidate.mapUrl)) {
+      setMetadataAddress("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/maps/metadata", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: candidate.mapUrl }),
+          signal: controller.signal
+        });
+        const body = await response.json().catch(() => null);
+
+        if (response.ok && body?.address) {
+          setMetadataAddress(body.address);
+        }
+      } catch {
+        if (!controller.signal.aborted) {
+          setMetadataAddress("");
+        }
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [candidate.address, candidate.mapUrl]);
 
   return (
     <article className={`candidate-card ${candidate.status}`}>
@@ -1166,6 +1202,7 @@ function CandidateCard({
         <div>
           <span className={statusTone[candidate.status]}>{statusLabels[candidate.status]}</span>
           <h4>{candidate.name}</h4>
+          {displayAddress && <p className="candidate-address">{displayAddress}</p>}
           <p>{candidate.city} · {categoryLabel(candidate.category)}</p>
         </div>
         <a href={candidate.mapUrl} className="icon-link" target="_blank" rel="noreferrer" aria-label={`${candidate.name} 지도 열기`}>

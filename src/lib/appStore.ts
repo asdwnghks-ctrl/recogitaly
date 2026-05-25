@@ -156,6 +156,7 @@ export async function addCandidate(input: {
   city: string;
   category: PlaceCategory;
   mapUrl: string;
+  address: string;
   reason: string;
   memberId: string;
   dayId: string;
@@ -163,27 +164,34 @@ export async function addCandidate(input: {
   beforeItemId: string | null;
 }) {
   const supabase = requireSupabase();
-  const { data, error } = await supabase
+  const insertPayload = {
+    trip_id: trip.id,
+    name: input.name,
+    city: input.city,
+    category: input.category,
+    map_url: input.mapUrl,
+    address: input.address,
+    reason: input.reason,
+    suggested_by_member_id: input.memberId,
+    related_day_id: input.dayId,
+    related_itinerary_item_id: input.afterItemId,
+    after_itinerary_item_id: input.afterItemId,
+    before_itinerary_item_id: input.beforeItemId,
+    status: "suggested"
+  };
+  let result = await supabase
     .from("place_candidates")
-    .insert({
-      trip_id: trip.id,
-      name: input.name,
-      city: input.city,
-      category: input.category,
-      map_url: input.mapUrl,
-      reason: input.reason,
-      suggested_by_member_id: input.memberId,
-      related_day_id: input.dayId,
-      related_itinerary_item_id: input.afterItemId,
-      after_itinerary_item_id: input.afterItemId,
-      before_itinerary_item_id: input.beforeItemId,
-      status: "suggested"
-    })
+    .insert(insertPayload)
     .select("*")
     .single();
 
-  if (error) throw error;
-  return mapCandidate(data);
+  if (isMissingColumnError(result.error, "address")) {
+    const { address: _address, ...payloadWithoutAddress } = insertPayload;
+    result = await supabase.from("place_candidates").insert(payloadWithoutAddress).select("*").single();
+  }
+
+  if (result.error) throw result.error;
+  return mapCandidate(result.data);
 }
 
 export async function addItineraryItem(input: {
@@ -482,6 +490,14 @@ function describeError(error: unknown) {
   return "Supabase 데이터를 불러오지 못했어요.";
 }
 
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") return false;
+
+  const maybeError = error as { code?: unknown; message?: unknown };
+  const message = typeof maybeError.message === "string" ? maybeError.message : "";
+  return message.includes(`'${columnName}' column`) && (maybeError.code === "PGRST204" || message.includes("schema cache"));
+}
+
 function mapTrip(row: any) {
   return { id: row.id, title: row.title, startDate: row.start_date, endDate: row.end_date, cities: row.cities ?? [] };
 }
@@ -569,6 +585,7 @@ function mapCandidate(row: any): PlaceCandidate {
     city: row.city,
     category: row.category,
     mapUrl: row.map_url,
+    address: row.address ?? "",
     suggestedByMemberId: row.suggested_by_member_id,
     relatedDayId: row.related_day_id,
     relatedItineraryItemId: row.related_itinerary_item_id,

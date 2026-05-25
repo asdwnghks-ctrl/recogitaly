@@ -40,8 +40,9 @@
 1. `supabase/migrations/002_schedule_notes_photos.sql`
 2. `supabase/migrations/003_candidate_photos.sql`
 3. `supabase/migrations/004_backfill_lodging_details.sql`
+4. `supabase/migrations/005_place_candidate_address.sql`
 
-각 마이그레이션은 일정 노트, 일정 사진, 제안 장소 사진, 숙소 주소/지도 링크 보정을 위한 스키마와 데이터를 추가한다.
+각 마이그레이션은 일정 노트, 일정 사진, 제안 장소 사진, 후보 장소 주소, 숙소 주소/지도 링크 보정을 위한 스키마와 데이터를 추가한다.
 
 ## 환경 변수
 
