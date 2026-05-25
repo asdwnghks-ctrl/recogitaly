@@ -1604,6 +1604,8 @@ function TimelineItem({
   onPointerDragEnd: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }) {
   const isNote = item.itemType === "note";
+  const displayTitle = !isNote && item.placeName ? item.placeName : item.title;
+  const displayAddress = !isNote && item.address && item.address !== displayTitle ? item.address : "";
 
   return (
     <article className={`timeline-item importance-${item.importance} item-type-${item.itemType}`}>
@@ -1612,7 +1614,7 @@ function TimelineItem({
         className="drag-handle"
         draggable
         title="순서 옮기기"
-        aria-label={`${item.title} 순서 옮기기`}
+        aria-label={`${displayTitle} 순서 옮기기`}
         onDragStart={(event) => {
           event.dataTransfer.effectAllowed = "move";
           event.dataTransfer.setData("text/plain", item.id);
@@ -1629,11 +1631,10 @@ function TimelineItem({
       <div className="time-pill">{item.timeLabel}</div>
       <div className="timeline-body">
         <div className="timeline-title-row">
-          <h3>{item.title}</h3>
+          <h3>{displayTitle}</h3>
           {isNote && <span className="badge badge-muted">노트</span>}
         </div>
-        {!isNote && item.placeName && <p>{item.placeName}</p>}
-        {!isNote && item.address && <small className="address-line">{item.address}</small>}
+        {displayAddress && <small className="address-line">{displayAddress}</small>}
         {item.description && <span>{item.description}</span>}
         <ItineraryPhotoStrip
           item={item}
@@ -1645,7 +1646,7 @@ function TimelineItem({
         />
       </div>
       {item.mapUrl && (
-        <a href={item.mapUrl} target="_blank" rel="noreferrer" aria-label={`${item.placeName} 지도 열기`}>
+        <a href={item.mapUrl} target="_blank" rel="noreferrer" aria-label={`${displayTitle} 지도 열기`}>
           <MapPin size={18} aria-hidden />
         </a>
       )}

@@ -4,6 +4,7 @@ import { trip } from "@/data/baseData";
 import { getSupabaseAdmin } from "@/lib/supabaseServer";
 
 const itemTypes = new Set(["place", "note"]);
+const optionalInsertColumns = new Set(["address", "created_by_member_id", "item_type"]);
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
   const address = itemType === "note" ? "" : String(body.address ?? "").trim();
   const mapUrl = itemType === "note" ? "" : String(body.mapUrl ?? "").trim();
 
-  const insertPayload = {
+  let insertPayload: Record<string, string | number> = {
     id: itemId,
     trip_id: day.trip_id ?? trip.id,
     day_id: body.dayId,
@@ -55,15 +56,28 @@ export async function POST(request: Request) {
     map_url: mapUrl,
     description: String(body.description ?? "").trim(),
     importance: "normal",
-    created_by_member_id: body.memberId
+    created_by_member_id: String(body.memberId)
   };
 
-  let { error: insertError } = await supabase.from("itinerary_items").insert(insertPayload);
+  let insertError: { message: string } | null = null;
 
-  if (isMissingColumnError(insertError, "address")) {
-    const { address: _address, ...payloadWithoutAddress } = insertPayload;
-    const retry = await supabase.from("itinerary_items").insert(payloadWithoutAddress);
-    insertError = retry.error;
+  for (let attempt = 0; attempt < optionalInsertColumns.size + 1; attempt += 1) {
+    const { error } = await supabase.from("itinerary_items").insert(insertPayload);
+
+    if (!error) {
+      insertError = null;
+      break;
+    }
+
+    const missingColumn = getMissingColumnName(error);
+    if (!missingColumn || !optionalInsertColumns.has(missingColumn) || !(missingColumn in insertPayload)) {
+      insertError = error;
+      break;
+    }
+
+    const { [missingColumn]: _removed, ...nextPayload } = insertPayload;
+    insertPayload = nextPayload;
+    insertError = error;
   }
 
   if (insertError) {
@@ -81,12 +95,17 @@ export async function POST(request: Request) {
   return NextResponse.json({ ok: true, itemId });
 }
 
-function isMissingColumnError(error: unknown, columnName: string) {
-  if (!error || typeof error !== "object") return false;
+function getMissingColumnName(error: unknown) {
+  if (!error || typeof error !== "object") return null;
 
   const maybeError = error as { code?: unknown; message?: unknown };
   const message = typeof maybeError.message === "string" ? maybeError.message : "";
-  return message.includes(`'${columnName}' column`) && (maybeError.code === "PGRST204" || message.includes("schema cache"));
+
+  if (maybeError.code !== "PGRST204" && !message.includes("schema cache")) {
+    return null;
+  }
+
+  return message.match(/'([^']+)' column/)?.[1] ?? null;
 }
 
 function insertAfter(currentIds: string[], itemId: string, afterItemId: string | null) {
