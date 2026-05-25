@@ -65,16 +65,7 @@ import type {
   TripDay
 } from "@/lib/types";
 
-declare global {
-  interface Window {
-    google?: any;
-    initRecogitalyGoogleMaps?: () => void;
-    recogitalyGoogleMapsPromise?: Promise<void>;
-  }
-}
-
 type TabId = "home" | "schedule" | "accounting" | "more";
-type CandidateInputMode = "link" | "map";
 type DropPosition = "before" | "after";
 type LodgingPoint = {
   name: string;
@@ -87,8 +78,6 @@ type PointerDragState = {
   targetItemId: string | null;
   position: DropPosition | null;
 };
-
-const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
 const tabs: Array<{ id: TabId; label: string; icon: typeof Home }> = [
   { id: "home", label: "홈", icon: Home },
@@ -946,7 +935,6 @@ function ItineraryItemForm({
   onSubmit: (input: Parameters<typeof addItineraryItem>[0]) => void;
 }) {
   const [itemType, setItemType] = useState<ItineraryItemType>("place");
-  const [inputMode, setInputMode] = useState<CandidateInputMode>("link");
   const [timeLabel, setTimeLabel] = useState("");
   const [title, setTitle] = useState("");
   const [placeName, setPlaceName] = useState("");
@@ -956,13 +944,14 @@ function ItineraryItemForm({
   const [description, setDescription] = useState("");
   const [lookupStatus, setLookupStatus] = useState("");
   const placeTouchedRef = useRef(false);
+  const addressTouchedRef = useRef(false);
 
   useEffect(() => {
     setCity(day.city.split("/")[0]);
   }, [day.id, day.city]);
 
   useEffect(() => {
-    if (itemType !== "place" || inputMode !== "link") {
+    if (itemType !== "place") {
       return;
     }
 
@@ -978,7 +967,7 @@ function ItineraryItemForm({
 
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
-      setLookupStatus("지도 제목을 불러오는 중...");
+      setLookupStatus("장소 정보를 불러오는 중...");
 
       try {
         const response = await fetch("/api/maps/metadata", {
@@ -998,10 +987,13 @@ function ItineraryItemForm({
           setTitle((current) => current || body.name);
           setPlaceName(body.name);
         }
+        if ((body?.address || body?.name) && !addressTouchedRef.current) {
+          setAddress(body.address || body.name);
+        }
         if (body?.url && body.url !== mapUrl) {
           setMapUrl(body.url);
         }
-        setLookupStatus(body?.name ? "지도 제목을 불러왔어요." : "장소명을 직접 적어주세요.");
+        setLookupStatus(body?.name || body?.address ? "장소 정보를 불러왔어요." : "장소명을 직접 적어주세요.");
       } catch (error) {
         if (!controller.signal.aborted) {
           setLookupStatus("장소명을 직접 적어주세요.");
@@ -1013,20 +1005,7 @@ function ItineraryItemForm({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [inputMode, itemType, mapUrl]);
-
-  const applySelectedPlace = useCallback(
-    (place: { name: string; city: string; address: string; mapUrl: string }) => {
-      placeTouchedRef.current = false;
-      setTitle(place.name);
-      setPlaceName(place.name);
-      setCity(place.city || city);
-      setAddress(place.address);
-      setMapUrl(place.mapUrl);
-      setLookupStatus("지도에서 선택했어요.");
-    },
-    [city]
-  );
+  }, [itemType, mapUrl]);
 
   return (
     <form
@@ -1071,50 +1050,46 @@ function ItineraryItemForm({
       </div>
       {itemType === "place" && (
         <>
-      <div className="segmented input-mode-segmented">
-        <button type="button" className={inputMode === "link" ? "selected" : ""} onClick={() => setInputMode("link")}>
-          링크로 추가
-        </button>
-        <button type="button" className={inputMode === "map" ? "selected" : ""} onClick={() => setInputMode("map")}>
-          지도에서 검색
-        </button>
-      </div>
-      {inputMode === "map" && (
-        <PlaceSearchBox apiKey={googleMapsApiKey} fallbackCity={city} onSelect={applySelectedPlace} />
-      )}
-      <label className="field">
-        <span>구글 지도 링크</span>
-        <input
-          value={mapUrl}
-          onChange={(event) => {
-            placeTouchedRef.current = false;
-            setMapUrl(event.target.value);
-          }}
-          placeholder="https://maps.app.goo.gl/..."
-        />
-        {lookupStatus && <small className="field-hint">{lookupStatus}</small>}
-      </label>
-      <div className="form-grid">
-        <label className="field">
-          <span>장소명</span>
-          <input
-            value={placeName}
-            onChange={(event) => {
-              placeTouchedRef.current = true;
-              setPlaceName(event.target.value);
-            }}
-            placeholder="구글 지도 장소명"
-          />
-        </label>
-        <label className="field">
-          <span>도시</span>
-          <input value={city} onChange={(event) => setCity(event.target.value)} required />
-        </label>
-      </div>
-      <label className="field">
-        <span>주소</span>
-        <input value={address} onChange={(event) => setAddress(event.target.value)} placeholder="텍스트로 보일 주소" />
-      </label>
+          <label className="field">
+            <span>구글 지도 링크</span>
+            <input
+              value={mapUrl}
+              onChange={(event) => {
+                placeTouchedRef.current = false;
+                setMapUrl(event.target.value);
+              }}
+              placeholder="https://maps.app.goo.gl/..."
+            />
+            {lookupStatus && <small className="field-hint">{lookupStatus}</small>}
+          </label>
+          <div className="form-grid">
+            <label className="field">
+              <span>장소명</span>
+              <input
+                value={placeName}
+                onChange={(event) => {
+                  placeTouchedRef.current = true;
+                  setPlaceName(event.target.value);
+                }}
+                placeholder="구글 지도 장소명"
+              />
+            </label>
+            <label className="field">
+              <span>도시</span>
+              <input value={city} onChange={(event) => setCity(event.target.value)} required />
+            </label>
+          </div>
+          <label className="field">
+            <span>주소</span>
+            <input
+              value={address}
+              onChange={(event) => {
+                addressTouchedRef.current = true;
+                setAddress(event.target.value);
+              }}
+              placeholder="텍스트로 보일 주소"
+            />
+          </label>
         </>
       )}
       <label className="field">
@@ -1131,90 +1106,6 @@ function ItineraryItemForm({
         </button>
       </div>
     </form>
-  );
-}
-
-function PlaceSearchBox({
-  apiKey,
-  fallbackCity,
-  onSelect
-}: {
-  apiKey: string;
-  fallbackCity: string;
-  onSelect: (place: { name: string; city: string; address: string; mapUrl: string }) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const mapRef = useRef<HTMLDivElement>(null);
-  const onSelectRef = useRef(onSelect);
-  const [status, setStatus] = useState(apiKey ? "지도 준비 중..." : "지도 검색은 API 키가 필요해요.");
-
-  useEffect(() => {
-    onSelectRef.current = onSelect;
-  }, [onSelect]);
-
-  useEffect(() => {
-    if (!apiKey) return;
-
-    let cancelled = false;
-    let listener: { remove: () => void } | null = null;
-
-    loadGoogleMapsApi(apiKey)
-      .then(() => {
-        if (cancelled || !window.google || !inputRef.current || !mapRef.current) return;
-
-        const map = new window.google.maps.Map(mapRef.current, {
-          center: { lat: 42.5, lng: 12.5 },
-          zoom: 5,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false
-        });
-        const marker = new window.google.maps.Marker({ map });
-        const autocomplete = new window.google.maps.places.Autocomplete(inputRef.current, {
-          fields: ["address_components", "formatted_address", "geometry", "name", "place_id", "url"]
-        });
-
-        autocomplete.bindTo("bounds", map);
-        listener = autocomplete.addListener("place_changed", () => {
-          const place = autocomplete.getPlace();
-          if (!place?.geometry?.location) {
-            setStatus("검색 목록에서 장소를 선택해주세요.");
-            return;
-          }
-
-          map.setCenter(place.geometry.location);
-          map.setZoom(15);
-          marker.setPosition(place.geometry.location);
-          marker.setVisible(true);
-
-          const name = place.name?.trim() || inputRef.current?.value.trim() || "";
-          onSelectRef.current({
-            name,
-            city: extractPlaceCity(place.address_components, fallbackCity),
-            address: place.formatted_address ?? "",
-            mapUrl: place.url || buildGoogleMapsPlaceUrl(name, place.formatted_address, place.place_id)
-          });
-        });
-
-        setStatus("지도에서 장소를 검색해 선택하세요.");
-      })
-      .catch(() => setStatus("지도 검색을 불러오지 못했어요."));
-
-    return () => {
-      cancelled = true;
-      listener?.remove();
-    };
-  }, [apiKey, fallbackCity]);
-
-  return (
-    <div className="map-picker">
-      <label className="field">
-        <span>지도 검색</span>
-        <input ref={inputRef} className="place-search-input" placeholder="식당, 카페, 장소 검색" disabled={!apiKey} />
-        <small className="field-hint">{status}</small>
-      </label>
-      <div ref={mapRef} className="embedded-map" aria-label="구글 지도 검색" />
-    </div>
   );
 }
 
@@ -1640,7 +1531,6 @@ function MoreView({
         <ol>
           <li>Supabase SQL Editor에서 `supabase/migrations/001_initial_schema.sql` 실행</li>
           <li>`.env`에 Supabase URL, anon key, service role key, 관리자 코드 입력</li>
-          <li>Google Maps 키는 `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`에 입력</li>
           <li>`npm run seed:supabase`로 기본 일정 넣기</li>
         </ol>
       </section>
@@ -1909,49 +1799,6 @@ function isGoogleMapsUrl(value: string) {
   } catch {
     return false;
   }
-}
-
-function loadGoogleMapsApi(apiKey: string) {
-  if (window.google?.maps?.places) {
-    return Promise.resolve();
-  }
-
-  if (window.recogitalyGoogleMapsPromise) {
-    return window.recogitalyGoogleMapsPromise;
-  }
-
-  window.recogitalyGoogleMapsPromise = new Promise<void>((resolve, reject) => {
-    window.initRecogitalyGoogleMaps = () => resolve();
-
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&callback=initRecogitalyGoogleMaps`;
-    script.async = true;
-    script.defer = true;
-    script.dataset.recogitalyGoogleMaps = "true";
-    script.onerror = () => {
-      window.recogitalyGoogleMapsPromise = undefined;
-      reject(new Error("Google Maps API failed to load."));
-    };
-    document.head.appendChild(script);
-  });
-
-  return window.recogitalyGoogleMapsPromise;
-}
-
-function buildGoogleMapsPlaceUrl(name: string, address = "", placeId = "") {
-  const query = encodeURIComponent([name, address].filter(Boolean).join(" "));
-  const placeIdQuery = placeId ? `&query_place_id=${encodeURIComponent(placeId)}` : "";
-  return `https://www.google.com/maps/search/?api=1&query=${query}${placeIdQuery}`;
-}
-
-function extractPlaceCity(addressComponents: Array<{ long_name: string; types: string[] }> | undefined, fallbackCity: string) {
-  const component = addressComponents?.find((part) =>
-    part.types.some((type) =>
-      ["locality", "postal_town", "administrative_area_level_3", "administrative_area_level_2"].includes(type)
-    )
-  );
-
-  return component?.long_name ?? fallbackCity;
 }
 
 function getNearestDay(days: TripDay[]) {

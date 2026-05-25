@@ -30,9 +30,8 @@
 
 - 기존 일정 카드에도 주소 텍스트가 함께 표시된다.
 - 구글 지도 링크가 있는 일정과 숙소는 지도 링크를 바로 열 수 있다.
-- 앱 안 지도 검색 기능은 `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` 환경변수를 사용한다.
-- Google Maps JavaScript API와 Places API를 활성화해야 지도 검색이 동작한다.
-- Google Maps API는 결제 계정 연결이 필요하며, 무료 크레딧 안에서 운영될 수는 있지만 완전 무료 보장은 아니다.
+- 일정 추가 폼은 구글 지도 링크를 입력하면 가능한 경우 장소명과 주소 텍스트를 자동으로 채운다.
+- 앱 안 지도 검색과 Google Maps JavaScript API 키는 사용하지 않는다.
 
 ## Supabase 마이그레이션
 
@@ -53,7 +52,6 @@
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_ACCESS_CODE`
 - `NEXT_PUBLIC_EXCHANGE_RATE_EUR_KRW`
-- `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
 
 로컬은 `.env`, 배포는 Vercel 환경 변수에 같은 값을 넣는다. 실제 키 값은 저장소 문서나 커밋에 남기지 않는다.
 
@@ -69,6 +67,5 @@
 ## 다음 후보 작업
 
 - 구글 지도 앱으로 오늘 일정 동선을 여는 링크 추가
-- 앱 안 지도에 일정 핀과 경로 표시
 - 지도 API 비용을 줄이기 위한 Google Maps URL 기반 흐름 검토
 - 모바일에서 긴 일정/주소 텍스트가 더 편하게 보이도록 카드 밀도 조정

@@ -41,7 +41,7 @@ export async function POST(request: Request) {
   const address = itemType === "note" ? "" : String(body.address ?? "").trim();
   const mapUrl = itemType === "note" ? "" : String(body.mapUrl ?? "").trim();
 
-  const { error: insertError } = await supabase.from("itinerary_items").insert({
+  const insertPayload = {
     id: itemId,
     trip_id: day.trip_id ?? trip.id,
     day_id: body.dayId,
@@ -56,7 +56,15 @@ export async function POST(request: Request) {
     description: String(body.description ?? "").trim(),
     importance: "normal",
     created_by_member_id: body.memberId
-  });
+  };
+
+  let { error: insertError } = await supabase.from("itinerary_items").insert(insertPayload);
+
+  if (isMissingColumnError(insertError, "address")) {
+    const { address: _address, ...payloadWithoutAddress } = insertPayload;
+    const retry = await supabase.from("itinerary_items").insert(payloadWithoutAddress);
+    insertError = retry.error;
+  }
 
   if (insertError) {
     return NextResponse.json({ message: insertError.message }, { status: 500 });
@@ -71,6 +79,14 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, itemId });
+}
+
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") return false;
+
+  const maybeError = error as { code?: unknown; message?: unknown };
+  const message = typeof maybeError.message === "string" ? maybeError.message : "";
+  return message.includes(`'${columnName}' column`) && (maybeError.code === "PGRST204" || message.includes("schema cache"));
 }
 
 function insertAfter(currentIds: string[], itemId: string, afterItemId: string | null) {
