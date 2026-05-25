@@ -617,6 +617,13 @@ a {
   min-width: 0;
 }
 
+.timeline-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
 .timeline-title-row {
   display: flex;
   align-items: center;
@@ -1314,9 +1321,10 @@ a {
     grid-column: 2 / -1;
   }
 
-  .timeline-item > a {
+  .timeline-actions {
     grid-column: 3;
     grid-row: 1;
+    flex-direction: row;
   }
 
   .category-segmented,

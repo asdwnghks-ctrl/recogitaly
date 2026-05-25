@@ -39,11 +39,12 @@ export async function POST(request: Request) {
     html = "";
   }
 
+  const fallbackName = nameFromUrl(finalUrl) || nameFromUrl(rawUrl);
+  const previewPlace = await fetchPreviewPlace(html, finalUrl, fallbackName);
   const structuredPlace = extractStructuredPlace(html);
   const htmlTitle = extractTitle(html);
-  const fallbackName = nameFromUrl(finalUrl) || nameFromUrl(rawUrl);
   const name = cleanGoogleMapsTitle(structuredPlace.name || htmlTitle) || fallbackName;
-  const address = structuredPlace.address || extractAddress(html, name);
+  const address = previewPlace.address || structuredPlace.address || extractAddress(html, name);
 
   return NextResponse.json({
     name,
@@ -63,6 +64,108 @@ function parseUrl(value: string) {
 function isGoogleMapsHost(hostname: string) {
   const normalized = hostname.toLowerCase();
   return googleMapsHosts.has(normalized) || normalized.endsWith(".google.com");
+}
+
+async function fetchPreviewPlace(html: string, baseUrl: string, placeName: string) {
+  const previewUrl = extractPreviewUrl(html, baseUrl);
+  if (!previewUrl) return { name: "", address: "" };
+
+  try {
+    const response = await fetch(previewUrl, {
+      headers: {
+        "accept-language": "ko,en;q=0.8",
+        "user-agent": "Mozilla/5.0 RecogitalyBot/1.0",
+        referer: baseUrl
+      }
+    });
+    const previewText = await response.text();
+    return extractPreviewPlace(previewText, placeName);
+  } catch {
+    return { name: "", address: "" };
+  }
+}
+
+function extractPreviewUrl(html: string, baseUrl: string) {
+  const match = html.match(/<link href=["']([^"']*\/maps\/preview\/place[^"']+)["'][^>]*rel=["']preload["']/i);
+  const rawUrl = match?.[1] ? decodeHtmlEntities(match[1]) : "";
+
+  if (!rawUrl) return "";
+
+  try {
+    return new URL(rawUrl, baseUrl).toString();
+  } catch {
+    return "";
+  }
+}
+
+function extractPreviewPlace(value: string, placeName: string) {
+  const jsonText = value.replace(/^\)\]\}'\s*/, "").trim();
+  const parsed = parseJson(jsonText);
+  if (!parsed) return { name: "", address: "" };
+
+  const address = findPreviewAddress(parsed, placeName);
+  return { name: "", address };
+}
+
+function findPreviewAddress(value: unknown, placeName: string) {
+  const candidates: Array<{ value: string; score: number }> = [];
+  collectAddressCandidates(value, candidates, placeName);
+
+  return candidates.sort((a, b) => b.score - a.score)[0]?.value ?? "";
+}
+
+function collectAddressCandidates(value: unknown, candidates: Array<{ value: string; score: number }>, placeName: string) {
+  if (Array.isArray(value)) {
+    const stringParts = value.map((item) => (typeof item === "string" ? cleanPreviewString(item) : "")).filter(Boolean);
+    if (stringParts.length >= 2 && stringParts.length <= 5 && looksLikeAddress(stringParts[0])) {
+      addAddressCandidate(stringParts.join(", "), candidates, placeName);
+    }
+
+    value.forEach((item) => collectAddressCandidates(item, candidates, placeName));
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    Object.values(value).forEach((item) => collectAddressCandidates(item, candidates, placeName));
+    return;
+  }
+
+  if (typeof value === "string") {
+    addAddressCandidate(value, candidates, placeName);
+  }
+}
+
+function addAddressCandidate(rawValue: string, candidates: Array<{ value: string; score: number }>, placeName: string) {
+  const value = normalizeAddressCandidate(rawValue, placeName);
+  if (!value) return;
+
+  candidates.push({ value, score: scoreAddress(value) });
+}
+
+function normalizeAddressCandidate(value: string, placeName: string) {
+  let candidate = cleanPreviewString(value);
+  if (!candidate || candidate.length > 220 || /https?:|\/maps\//i.test(candidate)) return "";
+
+  if (placeName) {
+    candidate = candidate.replace(new RegExp(`^${escapeRegExp(placeName)}\\s*[-·|,]*\\s*`, "i"), "").trim();
+  }
+
+  if (!looksLikeAddress(candidate)) return "";
+  return candidate.replace(/\s+/g, " ");
+}
+
+function scoreAddress(value: string) {
+  let score = 0;
+  if (/^(via|viale|piazza|piazzale|street|st\.|road|rd\.|avenue|ave\.)\b/i.test(value)) score += 4;
+  if (value.includes(",")) score += 3;
+  if (/\b\d{4,6}\b/.test(value)) score += 2;
+  if (/\b(italy|italia|이탈리아)\b/i.test(value)) score += 2;
+  if (value.length >= 20 && value.length <= 140) score += 1;
+  return score;
+}
+
+function cleanPreviewString(value: string) {
+  return decodeHtmlEntities(value).replace(/\s+/g, " ").trim();
 }
 
 function extractTitle(html: string) {
@@ -194,6 +297,7 @@ function cleanGoogleMapsTitle(value: string) {
   return value
     .replace(/\s*[-·]\s*Google Maps\s*$/i, "")
     .replace(/^Google Maps\s*$/i, "")
+    .replace(/^Google 지도\s*$/i, "")
     .trim();
 }
 
@@ -225,7 +329,7 @@ function decodeHtmlEntities(value: string) {
 }
 
 function looksLikeAddress(value: string) {
-  return /[0-9]/.test(value) || /,/.test(value) || /\b(via|viale|piazza|street|st\.|road|rd\.|avenue|ave\.)\b/i.test(value);
+  return /[0-9]/.test(value) || /,/.test(value) || /\b(via|viale|piazza|piazzale|street|st\.|road|rd\.|avenue|ave\.)\b/i.test(value);
 }
 
 function escapeRegExp(value: string) {

@@ -206,6 +206,10 @@ export async function reorderItineraryItems(dayId: string, orderedIds: string[],
   await postJson("/api/itinerary/reorder", { dayId, orderedIds, memberId }, "일정 순서 변경에 실패했어요.");
 }
 
+export async function deleteItineraryItem(itemId: string, memberId: string) {
+  await postJson("/api/itinerary/delete", { itemId, memberId }, "일정 삭제에 실패했어요.");
+}
+
 export async function uploadItineraryPhoto(itemId: string, memberId: string, file: File) {
   const supabase = requireSupabase();
   if (!file.type.startsWith("image/")) {

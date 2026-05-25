@@ -29,12 +29,14 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
+  addCandidate,
   addComment,
   addExpense,
   addItineraryItem,
   confirmSettlement,
   deleteCandidate,
   deleteExpense,
+  deleteItineraryItem,
   deleteMapLink,
   decidePlace,
   fallbackData,
@@ -634,6 +636,29 @@ function ScheduleView({
     runAction(() => deleteMapLink(linkId, currentMember.id), "지도 링크를 삭제했어요.");
   };
 
+  const removeItineraryItem = (item: ItineraryItem) => {
+    if (!window.confirm("이 일정을 삭제할까요?")) return;
+    runAction(() => deleteItineraryItem(item.id, currentMember.id), "일정을 삭제했어요.");
+  };
+
+  const saveScheduleInput = (input: Parameters<typeof addItineraryItem>[0], beforeItemId: string | null) => {
+    if (input.itemType === "place") {
+      return addCandidate({
+        name: input.placeName || input.title,
+        city: input.city,
+        category: "etc",
+        mapUrl: input.mapUrl,
+        reason: input.description,
+        memberId: input.memberId,
+        dayId: input.dayId,
+        afterItemId: input.afterItemId,
+        beforeItemId
+      });
+    }
+
+    return addItineraryItem(input);
+  };
+
   const dropItineraryItem = (draggedItemId: string, targetItemId: string, position: DropPosition) => {
     if (draggedItemId === targetItemId) return;
 
@@ -793,6 +818,8 @@ function ScheduleView({
                 currentMember={currentMember}
                 busy={busy}
                 runAction={runAction}
+                canDelete={item.id.startsWith("item-user-") && (!item.createdByMemberId || item.createdByMemberId === currentMember.id || canUseAdmin)}
+                onDelete={() => removeItineraryItem(item)}
                 onDragStart={() => setDraggingItemId(item.id)}
                 onDragEnd={() => {
                   setDraggingItemId(null);
@@ -824,9 +851,9 @@ function ScheduleView({
                     onCancel={() => setAnchor(null)}
                     onSubmit={(input) =>
                       runAction(async () => {
-                        await addItineraryItem(input);
+                        await saveScheduleInput(input, nextItem?.id ?? null);
                         setAnchor(null);
-                      }, "일정을 추가했어요.")
+                      }, input.itemType === "place" ? "후보를 추가했어요." : "일정을 추가했어요.")
                     }
                   />
                 ) : (
@@ -854,9 +881,9 @@ function ScheduleView({
                 onCancel={() => setAnchor(null)}
                 onSubmit={(input) =>
                   runAction(async () => {
-                    await addItineraryItem(input);
+                    await saveScheduleInput(input, null);
                     setAnchor(null);
-                  }, "일정을 추가했어요.")
+                  }, input.itemType === "place" ? "후보를 추가했어요." : "일정을 추가했어요.")
                 }
               />
             ) : (
@@ -987,8 +1014,8 @@ function ItineraryItemForm({
           setTitle((current) => current || body.name);
           setPlaceName(body.name);
         }
-        if ((body?.address || body?.name) && !addressTouchedRef.current) {
-          setAddress(body.address || body.name);
+        if (body?.address && !addressTouchedRef.current) {
+          setAddress(body.address);
         }
         if (body?.url && body.url !== mapUrl) {
           setMapUrl(body.url);
@@ -1100,7 +1127,7 @@ function ItineraryItemForm({
         <button type="button" className="ghost-button" onClick={onCancel}>
           취소
         </button>
-        <button type="submit" className="primary-button" disabled={busy || !title.trim()}>
+        <button type="submit" className="primary-button" disabled={busy || !title.trim() || (itemType === "place" && !mapUrl.trim())}>
           <Send size={16} aria-hidden />
           추가
         </button>
@@ -1585,6 +1612,8 @@ function TimelineItem({
   currentMember,
   busy,
   runAction,
+  canDelete,
+  onDelete,
   onDragStart,
   onDragEnd,
   onPointerDragStart,
@@ -1597,6 +1626,8 @@ function TimelineItem({
   currentMember: Member;
   busy: boolean;
   runAction: (action: () => Promise<void>, successMessage: string) => void;
+  canDelete: boolean;
+  onDelete: () => void;
   onDragStart: () => void;
   onDragEnd: () => void;
   onPointerDragStart: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -1645,11 +1676,18 @@ function TimelineItem({
           runAction={runAction}
         />
       </div>
-      {item.mapUrl && (
-        <a href={item.mapUrl} target="_blank" rel="noreferrer" aria-label={`${displayTitle} 지도 열기`}>
-          <MapPin size={18} aria-hidden />
-        </a>
-      )}
+      <div className="timeline-actions">
+        {item.mapUrl && (
+          <a className="icon-action" href={item.mapUrl} target="_blank" rel="noreferrer" aria-label={`${displayTitle} 지도 열기`}>
+            <MapPin size={18} aria-hidden />
+          </a>
+        )}
+        {canDelete && (
+          <button type="button" className="icon-action danger" disabled={busy} onClick={onDelete} aria-label={`${displayTitle} 삭제`}>
+            <Trash2 size={16} aria-hidden />
+          </button>
+        )}
+      </div>
     </article>
   );
 }
